@@ -5,8 +5,9 @@ from pathlib import Path
 from doodle_mvp.character.assets import AssetLoader
 
 EXPECTED_ANIMATIONS = {
-    "idle", "blink", "yawn", "drag", "poke",
-    "happy", "dizzy", "mood_sad", "mood_stressed",
+    "idle", "blink", "yawn", "drag", "playful",
+    "happy", "dizzy", "curious", "sleepy",
+    "surprised", "sad", "stressed",
 }
 
 

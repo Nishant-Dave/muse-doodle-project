@@ -34,8 +34,8 @@ REACTING = "reacting"
 MOOD_ANIMATIONS = {
     "happy": "happy",
     "okay": "blink",
-    "sad": "mood_sad",
-    "stressed": "mood_stressed",
+    "sad": "sad",
+    "stressed": "stressed",
 }
 
 IDLE_MIN_S = 4.0
@@ -103,7 +103,7 @@ class BehaviorEngine(QObject):
             return
         self._state = REACTING
         self._idle_timer.stop()
-        self.play_requested.emit("poke", False)
+        self.play_requested.emit("playful", False)
 
     def handle_drag_start(self) -> None:
         if not self._enabled:
@@ -127,7 +127,13 @@ class BehaviorEngine(QObject):
         if not self._enabled or self._state != IDLE:
             return
         self._state = REACTING
-        choice = "yawn" if self._rng.random() < 0.2 else "blink"
+        roll = self._rng.random()
+        if roll < 0.15:
+            choice = "yawn"
+        elif roll < 0.30:
+            choice = "curious"
+        else:
+            choice = "blink"
         self.play_requested.emit(choice, False)
 
     def handle_mood(self, payload: dict) -> None:

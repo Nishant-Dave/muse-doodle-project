@@ -1,12 +1,14 @@
-# Doodle — Desktop Companion MVP (Phase 1)
+# Doodle — Desktop Companion MVP (Phase 1 + 2A)
 
 A friendly panda that lives on the Windows desktop. Small, frameless,
 transparent, draggable, with idle personality, click reactions, mood
 registration, and clean lifecycle. Built with Python + PySide6, no cloud
 services, no database, everything local.
 
-This is an independent Phase 1 implementation: desktop shell, animation
-system, behavior engine, mood registration, preferences.
+Phase 2A redesigned the character: a distinctive panda identity rendered
+from a single parametric rig (`tools/character_rig.py`) with soft 2.5D-style
+lighting, fur texture, glossy expressive eyes, and a coordinated 12-state
+expression library. See `assets/source/DESIGN.md` for the design rationale.
 
 ## Quick start
 
@@ -139,10 +141,13 @@ Windows:
 ## Project status (honest)
 
 - Implemented and automatically tested: app lifecycle, animation system
-  (9 states), drag/click input, behavior priorities, mood registration +
-  reactions, QSettings preferences, platform adapter structure, clean
-  shutdown. 47/47 tests pass.
+  (12 states, 43 frames from one parametric rig), drag/click input, behavior
+  priorities (poke -> playful; idle tick -> blink/curious/yawn), mood
+  registration + reactions, QSettings preferences, platform adapter
+  structure, clean shutdown. 47/47 tests pass.
 - Implemented, needs manual visual verification: transparency, always-on-top
   feel, animation smoothness/feel, tray on Windows (see checklist above).
-- Not implemented (out of Phase 1 scope): AI/LLM, journaling, SQLite,
+  The new artwork was visually inspected frame-by-frame at runtime size on
+  the development machine; Windows desktop rendering still needs your eyes.
+- Not implemented (out of scope): AI/LLM, journaling, SQLite,
   calendar/browser/email integrations, notifications, cloud sync, installer.

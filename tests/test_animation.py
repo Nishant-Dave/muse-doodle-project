@@ -45,7 +45,7 @@ def test_replay_does_not_create_extra_timers(player):
     player.play("idle")
     timer = player.timer
     for _ in range(5):
-        player.play("poke")
+        player.play("playful")
         player.play("idle")
     assert player.timer is timer
     assert len(player.findChildren(QTimer)) == 1
@@ -54,7 +54,7 @@ def test_replay_does_not_create_extra_timers(player):
 
 def test_frame_changed_emitted_on_play_and_tick(player, emitted):
     player.frame_changed.connect(emitted.append)
-    player.play("poke")
+    player.play("playful")
     assert len(emitted) == 1  # first frame on play
     player.tick()
     assert len(emitted) == 2

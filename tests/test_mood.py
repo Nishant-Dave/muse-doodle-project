@@ -67,5 +67,5 @@ def test_mood_selection_reaches_behavior_engine(qapp, bus, emitted):
     engine.play_requested.connect(lambda name, loop: emitted.append((name, loop)))
     engine.start()
     bus.publish(E.MOOD_SELECTED, {"mood": "stressed"})
-    assert emitted[-1] == ("mood_stressed", False)
+    assert emitted[-1] == ("stressed", False)
     engine.shutdown()

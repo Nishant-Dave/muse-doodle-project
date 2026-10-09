@@ -1,0 +1,91 @@
+{
+  "idle": {
+    "fps": 2,
+    "loop": true,
+    "description": "Gentle breathing idle loop",
+    "frames": [
+      "idle/frame_00.png",
+      "idle/frame_01.png",
+      "idle/frame_02.png"
+    ]
+  },
+  "blink": {
+    "fps": 9,
+    "loop": false,
+    "description": "Quick blink, returns to idle",
+    "frames": [
+      "blink/frame_00.png",
+      "blink/frame_01.png",
+      "blink/frame_02.png"
+    ]
+  },
+  "yawn": {
+    "fps": 3,
+    "loop": false,
+    "description": "Sleepy yawn with Z letters",
+    "frames": [
+      "yawn/frame_00.png",
+      "yawn/frame_01.png",
+      "yawn/frame_02.png",
+      "yawn/frame_03.png"
+    ]
+  },
+  "drag": {
+    "fps": 5,
+    "loop": true,
+    "description": "Being held: paws up, wide eyes",
+    "frames": [
+      "drag/frame_00.png",
+      "drag/frame_01.png"
+    ]
+  },
+  "poke": {
+    "fps": 7,
+    "loop": false,
+    "description": "Surprised poke then happy bounce",
+    "frames": [
+      "poke/frame_00.png",
+      "poke/frame_01.png",
+      "poke/frame_02.png"
+    ]
+  },
+  "happy": {
+    "fps": 6,
+    "loop": false,
+    "description": "Joyful bounce, closed happy eyes",
+    "frames": [
+      "happy/frame_00.png",
+      "happy/frame_01.png",
+      "happy/frame_02.png"
+    ]
+  },
+  "dizzy": {
+    "fps": 5,
+    "loop": false,
+    "description": "Dizzy after a long/fast drag",
+    "frames": [
+      "dizzy/frame_00.png",
+      "dizzy/frame_01.png",
+      "dizzy/frame_02.png",
+      "dizzy/frame_03.png"
+    ]
+  },
+  "mood_sad": {
+    "fps": 2,
+    "loop": false,
+    "description": "Reaction to 'Sad' mood",
+    "frames": [
+      "mood_sad/frame_00.png",
+      "mood_sad/frame_01.png"
+    ]
+  },
+  "mood_stressed": {
+    "fps": 4,
+    "loop": false,
+    "description": "Reaction to 'Stressed' mood",
+    "frames": [
+      "mood_stressed/frame_00.png",
+      "mood_stressed/frame_01.png"
+    ]
+  }
+}

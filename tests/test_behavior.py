@@ -21,19 +21,19 @@ def test_start_is_idempotent(engine, emitted):
     _start(engine, emitted)
     engine.start()
     engine.bus.publish(E.POKE)
-    pokes = [e for e in emitted if e[0] == "poke"]
+    pokes = [e for e in emitted if e[0] == "playful"]
     assert len(pokes) == 1  # no duplicated handlers
 
 
 def test_poke_plays_once_and_returns_to_idle(engine, emitted):
     _start(engine, emitted)
     engine.handle_poke()
-    assert emitted[-1] == ("poke", False)
+    assert emitted[-1] == ("playful", False)
     assert engine.state == REACTING
     # Repeated poke while reacting is ignored: no stacked animations.
     engine.handle_poke()
-    assert emitted[-1] == ("poke", False)
-    engine.on_animation_finished("poke")
+    assert emitted[-1] == ("playful", False)
+    engine.on_animation_finished("playful")
     assert emitted[-1] == ("idle", True)
     assert engine.state == IDLE
 
@@ -71,14 +71,14 @@ def test_slow_drag_ends_with_dizzy(engine, emitted):
 def test_mood_selects_matching_reaction(engine, emitted):
     _start(engine, emitted)
     engine.handle_mood({"mood": "sad"})
-    assert emitted[-1] == ("mood_sad", False)
-    engine.on_animation_finished("mood_sad")
+    assert emitted[-1] == ("sad", False)
+    engine.on_animation_finished("sad")
     engine.handle_mood({"mood": "happy"})
     assert emitted[-1] == ("happy", False)
     engine.on_animation_finished("happy")
     engine.handle_mood({"mood": "stressed"})
-    assert emitted[-1] == ("mood_stressed", False)
-    engine.on_animation_finished("mood_stressed")
+    assert emitted[-1] == ("stressed", False)
+    engine.on_animation_finished("stressed")
     engine.handle_mood({"mood": "okay"})
     assert emitted[-1] == ("blink", False)
 
@@ -98,10 +98,10 @@ def test_unknown_mood_ignored(engine, emitted):
     assert engine.state == IDLE
 
 
-def test_idle_tick_triggers_blink_or_yawn(engine, emitted):
+def test_idle_tick_triggers_idle_personality(engine, emitted):
     _start(engine, emitted)
     engine.handle_idle_tick()
-    assert emitted[-1][0] in ("blink", "yawn")
+    assert emitted[-1][0] in ("blink", "yawn", "curious")
     assert emitted[-1][1] is False
     assert engine.state == REACTING
 
@@ -129,10 +129,10 @@ def test_disabling_animations_shows_static_and_ignores_input(engine, emitted):
 def test_events_flow_through_bus(engine, emitted, bus):
     _start(engine, emitted)
     bus.publish(E.POKE)
-    assert emitted[-1] == ("poke", False)
+    assert emitted[-1] == ("playful", False)
     bus.publish(E.DRAG_START)
     assert emitted[-1] == ("drag", True)
     bus.publish(E.DRAG_END, {"distance_px": 1.0, "duration_s": 0.1})
     assert emitted[-1] == ("idle", True)
     bus.publish(E.MOOD_SELECTED, {"mood": "sad"})
-    assert emitted[-1] == ("mood_sad", False)
+    assert emitted[-1] == ("sad", False)
