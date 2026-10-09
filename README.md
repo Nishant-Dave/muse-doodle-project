@@ -102,11 +102,13 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m doodle_mvp.main --self-check
 PYTHONPATH=src python -m pytest tests/ -q
 ```
 
-47 tests, all passing (verified 2026-10-09, PySide6 6.11.2, offscreen).
+138 tests, all passing (verified 2026-10-09, PySide6 6.11.2, offscreen).
 Covers: asset loading + frame differences, animation frame progression and
 the single-timer invariant, behavior priorities and transitions, mood state
-and popup, preferences defaults/round-trips/invalid values, and app
-lifecycle/shutdown.
+and popup, preferences defaults/round-trips/invalid values, app
+lifecycle/shutdown, focus timer states/transitions/history (fake clock),
+reminder CRUD/due/overdue/duplicate-prevention/persistence, and
+focus+reminder integration with the behavior engine.
 
 ## Using Doodle
 
@@ -127,6 +129,19 @@ lifecycle/shutdown.
 - **Right-click** the panda (or tray menu): toggle **Animations**,
   **Glide after drag**, **Wander around**, or **Quit**.
 - **Tray icon**: Show/Hide, mood, toggles, quit.
+- **Focus timer** (right-click → **Focus…**): Pomodoro-style sessions
+  (default 25 min focus / 5 min break, long break every 4). Start, pause,
+  resume, stop, skip from the panel or the menu. The panda cheers briefly
+  when a session starts and finishes, then stays calm while you focus —
+  fewer playful interruptions, no wandering. Remaining time shows in the
+  panel and the tray tooltip. A running session is discarded if the app
+  restarts (by design); your settings and history are kept.
+- **Reminders** (right-click → **New reminder…** / **Reminders…**): title,
+  due date/time, notes, enable/disable. A small popup appears near the
+  panda when one is due (once — never twice, even after a restart).
+  Dismiss or delete from the list. Stored locally on your PC.
+- **Scratchpad** (right-click → **Scratchpad…**): a quick note that saves
+  itself automatically on this computer.
 
 ## Architecture
 
@@ -212,6 +227,39 @@ headless, so they are **NOT VERIFIED** (not claimed).
 12. Phase 1 + 2B functionality intact — **PASS** (full suite green,
     no regressions).
 
+### Phase 3 acceptance
+
+1. Open the quick-access menu (right-click panda / tray) — **PASS**
+   (automated: offscreen app builds both menus with focus, reminder,
+   scratchpad entries; visual layout **NOT VERIFIED**).
+2. Start a focus session — **PASS** (timer starts, panda celebrates
+   briefly, calm mode engages).
+3. Pause and resume the timer — **PASS** (fake-clock tests: remaining time
+   frozen exactly while paused).
+4. Complete a session and observe the transition — **PASS** (focus →
+   break auto-transition; long break every N sessions).
+5. Configure a short test timer — **PASS** (settings clamp invalid values;
+   changes apply to the next session).
+6. Create a reminder due soon — **PASS** (store add + upcoming list).
+7. Receive and dismiss the reminder — **PASS** (popup shown near panda,
+   dismiss marks handled; panda reacts subtly during focus).
+8. Create multiple reminders — **PASS** (queue shows them one at a time).
+9. Restart Doodle and verify persistence — **PASS** (reminders, history,
+   scratchpad survive; running session resets by design; notified flags
+   prevent duplicates).
+10. Open the utility panel (scratchpad) — **PASS** (auto-saves locally).
+11. Interact with the panda during a focus session — **PASS** (drag/poke/
+    come-here still work; autonomous chatter suppressed).
+12. Verify existing cursor reactions and dragging still work — **PASS**
+    (full pre-existing suite green).
+13. Leave Doodle running for an extended period — timer lifecycle
+    **PASS** (single shared scheduler, monotonic deadlines); long-run CPU
+    **NOT VERIFIED**.
+14. Verify no duplicate reminders appear — **PASS** (notified flag
+    persisted before publishing).
+15. Exit and confirm clean shutdown — **PASS** (timers stopped, dialogs
+    closed, bus cleared).
+
 ### General (visual, needs Windows)
 
 - [ ] Transparency: no rectangle/halo around the artwork.
@@ -233,7 +281,16 @@ headless, so they are **NOT VERIFIED** (not claimed).
   bounds and cancellation, landing settle, facing direction (incl. gaze flip
   when mirrored), scheduler weights/cooldowns/history, mood reactions with
   variation, asset validation, QSettings preferences, platform adapter
-  structure, clean shutdown. **113/113 tests pass** (98 baseline + 15 new).
+  structure, clean shutdown. **138/138 tests pass** (113 baseline + 25 new).
+- Phase 3 companion features (all local, no network): focus timer with
+  monotonic-clock accuracy, configurable durations, pause/resume/stop/skip,
+  auto focus→break transitions, long-break cadence, per-day session history;
+  JSON-backed reminders with a single shared due-scheduler, overdue
+  handling, dismiss/delete, and duplicate-notification prevention across
+  restarts; persistent scratchpad; focus panel, reminder dialogs, and
+  in-app notice popups; calm behavior profile during focus sessions
+  (restricted scheduler weights, doubled idle cadence, no wandering);
+  menu/tray integration with contextual focus controls.
 - Implemented, needs manual visual verification: everything marked
   NOT VERIFIED in the checklist above — transparency, always-on-top feel,
   motion smoothness/feel, tray on Windows. New artwork (walk strip, land

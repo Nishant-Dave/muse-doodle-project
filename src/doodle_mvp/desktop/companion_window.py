@@ -39,6 +39,10 @@ MIN_VELOCITY_DT_S = 0.02
 class CompanionWindow(QWidget):
     request_mood_popup = Signal()
     request_quit = Signal()
+    request_focus_panel = Signal()
+    request_reminder_dialog = Signal()
+    request_reminder_list = Signal()
+    request_scratchpad = Signal()
 
     def __init__(
         self,
@@ -68,6 +72,7 @@ class CompanionWindow(QWidget):
         self._animations_enabled = settings.animations_enabled()
         self._momentum_enabled = settings.momentum_enabled()
         self._wander_enabled = settings.wander_enabled()
+        self._focus_state_provider = None  # () -> (state, kind); set by app
 
     # -- public ---------------------------------------------------------------
 
@@ -86,6 +91,10 @@ class CompanionWindow(QWidget):
 
     def set_wander_enabled(self, enabled: bool) -> None:
         self._wander_enabled = enabled
+
+    def set_focus_state_provider(self, provider) -> None:
+        """Provider returning (state, kind) for contextual focus menu items."""
+        self._focus_state_provider = provider
 
     def center(self) -> QPoint:
         """Global position of the panda's center (cursor-proximity anchor)."""
@@ -176,6 +185,12 @@ class CompanionWindow(QWidget):
         mood_action.triggered.connect(self.request_mood_popup.emit)
         menu.addAction(mood_action)
 
+        menu.addSeparator()
+        self._add_focus_items(menu)
+        menu.addSeparator()
+        self._add_companion_items(menu)
+        menu.addSeparator()
+
         anim_action = QAction("Animations", menu)
         anim_action.setCheckable(True)
         anim_action.setChecked(self._animations_enabled)
@@ -219,6 +234,56 @@ class CompanionWindow(QWidget):
         menu.addAction(quit_action)
 
         menu.popup(global_pos)
+
+    def _add_focus_items(self, menu: QMenu) -> None:
+        """Contextual focus controls based on the timer's current state."""
+        state, _kind = ("idle", "idle")
+        if self._focus_state_provider is not None:
+            try:
+                state, _kind = self._focus_state_provider()
+            except Exception:  # noqa: BLE001 - menu must never fail
+                pass
+        panel = QAction("Focus…", menu)
+        panel.triggered.connect(self.request_focus_panel.emit)
+        menu.addAction(panel)
+        if state == "idle":
+            start = QAction("Start &focus session", menu)
+            start.triggered.connect(
+                lambda: self._bus.publish(E.FOCUS_CONTROL, {"action": "start"}))
+            menu.addAction(start)
+        elif state == "paused":
+            resume = QAction("&Resume focus", menu)
+            resume.triggered.connect(
+                lambda: self._bus.publish(E.FOCUS_CONTROL, {"action": "resume"}))
+            menu.addAction(resume)
+            stop = QAction("Stop &focus", menu)
+            stop.triggered.connect(
+                lambda: self._bus.publish(E.FOCUS_CONTROL, {"action": "stop"}))
+            menu.addAction(stop)
+        else:  # focusing or on break
+            pause = QAction("&Pause focus", menu)
+            pause.triggered.connect(
+                lambda: self._bus.publish(E.FOCUS_CONTROL, {"action": "pause"}))
+            menu.addAction(pause)
+            skip = QAction("S&kip to next", menu)
+            skip.triggered.connect(
+                lambda: self._bus.publish(E.FOCUS_CONTROL, {"action": "skip"}))
+            menu.addAction(skip)
+            stop = QAction("Stop &focus", menu)
+            stop.triggered.connect(
+                lambda: self._bus.publish(E.FOCUS_CONTROL, {"action": "stop"}))
+            menu.addAction(stop)
+
+    def _add_companion_items(self, menu: QMenu) -> None:
+        new_rem = QAction("New &reminder…", menu)
+        new_rem.triggered.connect(self.request_reminder_dialog.emit)
+        menu.addAction(new_rem)
+        upcoming = QAction("&Reminders…", menu)
+        upcoming.triggered.connect(self.request_reminder_list.emit)
+        menu.addAction(upcoming)
+        scratch = QAction("&Scratchpad…", menu)
+        scratch.triggered.connect(self.request_scratchpad.emit)
+        menu.addAction(scratch)
 
     def _on_come_here(self) -> None:
         from PySide6.QtGui import QCursor

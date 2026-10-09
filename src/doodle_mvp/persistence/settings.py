@@ -20,6 +20,11 @@ ANIMATIONS_KEY = "behavior/animations_enabled"
 MOMENTUM_KEY = "behavior/momentum_enabled"
 WANDER_KEY = "behavior/wander_enabled"
 PROXIMITY_RADIUS_KEY = "behavior/proximity_radius_px"
+# -- Phase 3: focus timer ------------------------------------------------------
+FOCUS_MINUTES_KEY = "focus/focus_minutes"
+BREAK_MINUTES_KEY = "focus/break_minutes"
+LONG_BREAK_MINUTES_KEY = "focus/long_break_minutes"
+SESSIONS_BEFORE_LONG_BREAK_KEY = "focus/sessions_before_long_break"
 
 
 class AppSettings:
@@ -91,6 +96,41 @@ class AppSettings:
 
     def set_proximity_radius(self, radius: float) -> None:
         self._s.setValue(PROXIMITY_RADIUS_KEY, float(radius))
+
+    # -- focus timer ------------------------------------------------------------
+
+    def focus_minutes(self) -> int:
+        return self._clamped_int(FOCUS_MINUTES_KEY, 25, 1, 180)
+
+    def set_focus_minutes(self, minutes: int) -> None:
+        self._s.setValue(FOCUS_MINUTES_KEY, int(minutes))
+
+    def break_minutes(self) -> int:
+        return self._clamped_int(BREAK_MINUTES_KEY, 5, 1, 60)
+
+    def set_break_minutes(self, minutes: int) -> None:
+        self._s.setValue(BREAK_MINUTES_KEY, int(minutes))
+
+    def long_break_minutes(self) -> int:
+        return self._clamped_int(LONG_BREAK_MINUTES_KEY, 15, 1, 120)
+
+    def set_long_break_minutes(self, minutes: int) -> None:
+        self._s.setValue(LONG_BREAK_MINUTES_KEY, int(minutes))
+
+    def sessions_before_long_break(self) -> int:
+        return self._clamped_int(SESSIONS_BEFORE_LONG_BREAK_KEY, 4, 2, 12)
+
+    def set_sessions_before_long_break(self, n: int) -> None:
+        self._s.setValue(SESSIONS_BEFORE_LONG_BREAK_KEY, int(n))
+
+    def _clamped_int(self, key: str, default: int, lo: int, hi: int) -> int:
+        raw = self._s.value(key, default)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            log.warning("Ignoring invalid %s value %r", key, raw)
+            return default
+        return max(lo, min(hi, value))
 
     def _bool(self, key: str, default: bool) -> bool:
         raw = self._s.value(key, default)

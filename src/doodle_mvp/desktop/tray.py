@@ -20,6 +20,11 @@ class TrayController(QObject):
     wander_toggled = Signal(bool)
     come_here_requested = Signal()
     wander_now_requested = Signal()
+    request_focus_panel = Signal()
+    request_reminder_dialog = Signal()
+    request_reminder_list = Signal()
+    request_scratchpad = Signal()
+    focus_control = Signal(str)  # start|pause|resume|stop|skip
 
     def __init__(
         self,
@@ -34,6 +39,8 @@ class TrayController(QObject):
         self._animations_enabled = animations_enabled
         self._momentum_enabled = momentum_enabled
         self._wander_enabled = wander_enabled
+        self._focus_state_provider = None
+        self._menu: QMenu | None = None
         self._anim_action: QAction | None = None
         self._momentum_action: QAction | None = None
         self._wander_action: QAction | None = None
@@ -43,8 +50,26 @@ class TrayController(QObject):
         self._tray = QSystemTrayIcon(QIcon(icon_pixmap), parent)
         self._tray.setToolTip("Doodle — desktop companion")
         self._tray.activated.connect(self._on_activated)
-        self._tray.setContextMenu(self._build_menu())
+        self._menu = self._build_menu()
+        self._menu.aboutToShow.connect(self._refresh_menu)
+        self._tray.setContextMenu(self._menu)
         self._tray.show()
+
+    def set_focus_state_provider(self, provider) -> None:
+        self._focus_state_provider = provider
+
+    def _refresh_menu(self) -> None:
+        """Rebuild the menu on every show so focus items stay contextual."""
+        if self._tray is None or self._menu is None:
+            return
+        self._menu.aboutToShow.disconnect(self._refresh_menu)
+        new_menu = self._build_menu()
+        new_menu.aboutToShow.connect(self._refresh_menu)
+        old = self._menu
+        self._menu = new_menu
+        self._tray.setContextMenu(new_menu)
+        if old is not None:
+            old.deleteLater()
 
     @property
     def is_available(self) -> bool:
@@ -65,6 +90,10 @@ class TrayController(QObject):
         if self._wander_action is not None:
             self._wander_action.setChecked(enabled)
 
+    def set_tooltip(self, text: str) -> None:
+        if self._tray is not None:
+            self._tray.setToolTip(text)
+
     def shutdown(self) -> None:
         if self._tray is not None:
             self._tray.hide()
@@ -83,6 +112,50 @@ class TrayController(QObject):
         mood_action.triggered.connect(self.request_mood_popup.emit)
         menu.addAction(mood_action)
 
+        menu.addSeparator()
+        focus_panel = QAction("Focus…", menu)
+        focus_panel.triggered.connect(self.request_focus_panel.emit)
+        menu.addAction(focus_panel)
+        state = "idle"
+        if self._focus_state_provider is not None:
+            try:
+                state, _kind = self._focus_state_provider()
+            except Exception:  # noqa: BLE001 - menu must never fail
+                pass
+        if state == "idle":
+            start = QAction("Start &focus session", menu)
+            start.triggered.connect(lambda: self.focus_control.emit("start"))
+            menu.addAction(start)
+        elif state == "paused":
+            resume = QAction("&Resume focus", menu)
+            resume.triggered.connect(lambda: self.focus_control.emit("resume"))
+            menu.addAction(resume)
+            stop = QAction("Stop &focus", menu)
+            stop.triggered.connect(lambda: self.focus_control.emit("stop"))
+            menu.addAction(stop)
+        else:
+            pause = QAction("&Pause focus", menu)
+            pause.triggered.connect(lambda: self.focus_control.emit("pause"))
+            menu.addAction(pause)
+            skip = QAction("S&kip to next", menu)
+            skip.triggered.connect(lambda: self.focus_control.emit("skip"))
+            menu.addAction(skip)
+            stop = QAction("Stop &focus", menu)
+            stop.triggered.connect(lambda: self.focus_control.emit("stop"))
+            menu.addAction(stop)
+
+        menu.addSeparator()
+        new_rem = QAction("New &reminder…", menu)
+        new_rem.triggered.connect(self.request_reminder_dialog.emit)
+        menu.addAction(new_rem)
+        upcoming = QAction("&Reminders…", menu)
+        upcoming.triggered.connect(self.request_reminder_list.emit)
+        menu.addAction(upcoming)
+        scratch = QAction("&Scratchpad…", menu)
+        scratch.triggered.connect(self.request_scratchpad.emit)
+        menu.addAction(scratch)
+
+        menu.addSeparator()
         self._anim_action = QAction("Animations", menu)
         self._anim_action.setCheckable(True)
         self._anim_action.setChecked(self._animations_enabled)

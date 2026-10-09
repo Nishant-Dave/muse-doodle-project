@@ -46,6 +46,11 @@ COOLDOWNS: dict[str, float] = {
     "blink": 0.0,
 }
 
+# Focus-mode profile: calm activities only (no playful outbursts, no walks).
+CALM_ACTIVITIES = frozenset(
+    {"blink", "curious", "yawn", "sleepy", "gaze_left", "gaze_right"}
+)
+
 HISTORY_LEN = 3
 IDLE_CHANCE = 0.18  # probability of "do nothing" on a given pick
 
@@ -64,10 +69,15 @@ class PersonalityScheduler:
         self._cooldowns = dict(cooldowns) if cooldowns else dict(COOLDOWNS)
         self._history: list[str] = []
         self._last_run: dict[str, float] = {}
+        self._calm = False
 
     @property
     def history(self) -> list[str]:
         return list(self._history)
+
+    def set_calm(self, calm: bool) -> None:
+        """Focus-mode profile: restrict to calm activities."""
+        self._calm = calm
 
     def record(self, activity: str) -> None:
         """Mark an activity as performed (also used for user-triggered ones)."""
@@ -82,6 +92,8 @@ class PersonalityScheduler:
         recent = set(self._history[-2:])
         out = []
         for name in self._weights:
+            if self._calm and name not in CALM_ACTIVITIES:
+                continue
             if name in recent:
                 continue
             last = self._last_run.get(name, float("-inf"))

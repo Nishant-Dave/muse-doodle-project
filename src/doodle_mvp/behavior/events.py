@@ -85,3 +85,17 @@ WANDER_TOGGLED = "wander_toggled"      # payload: {enabled: bool}
 COME_HERE = "come_here"                # payload: {x: int, y: int} cursor pos
 WANDER_NOW = "wander_now"              # payload: {}
 CURSOR_DWELL = "cursor_dwell"          # payload: {side: str}
+# -- Phase 3: companion features -------------------------------------------------
+FOCUS_CONTROL = "focus_control"        # payload: {action: start|pause|resume|stop|skip}
+FOCUS_STARTED = "focus_started"        # payload: {kind: focus|break, minutes: int}
+FOCUS_PAUSED = "focus_paused"          # payload: {kind: str}
+FOCUS_RESUMED = "focus_resumed"        # payload: {kind: str}
+FOCUS_STOPPED = "focus_stopped"        # payload: {}
+FOCUS_COMPLETED = "focus_completed"    # payload: {kind: focus|break, minutes: int}
+BREAK_STARTED = "break_started"        # payload: {minutes: int}
+BREAK_COMPLETED = "break_completed"    # payload: {minutes: int}
+FOCUS_TICK = "focus_tick"              # payload: {kind: str, remaining_s: int}
+REMINDER_CREATED = "reminder_created"  # payload: {id: str, title: str}
+REMINDER_DUE = "reminder_due"          # payload: {id: str, title: str, overdue: bool}
+REMINDER_DISMISSED = "reminder_dismissed"  # payload: {id: str}
+REMINDER_DELETED = "reminder_deleted"  # payload: {id: str}

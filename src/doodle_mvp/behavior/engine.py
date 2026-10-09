@@ -92,6 +92,7 @@ class BehaviorEngine(QObject):
         self._enabled = True
         self._momentum_enabled = True
         self._wander_enabled = True
+        self._focus_mode = False
         self._facing = "right"
         self._last_played: tuple[str, bool] | None = None
         self._schedule_timer = QTimer(self)
@@ -122,6 +123,13 @@ class BehaviorEngine(QObject):
         bus.subscribe(E.CURSOR_DWELL, self.handle_cursor_dwell)
         bus.subscribe(E.COME_HERE, self.handle_come_here)
         bus.subscribe(E.WANDER_NOW, self.handle_wander_now)
+        # Phase 3: companion features.
+        bus.subscribe(E.FOCUS_STARTED, self.handle_focus_started)
+        bus.subscribe(E.FOCUS_COMPLETED, self.handle_focus_completed)
+        bus.subscribe(E.BREAK_STARTED, self.handle_break_started)
+        bus.subscribe(E.BREAK_COMPLETED, self.handle_break_completed)
+        bus.subscribe(E.FOCUS_STOPPED, self.handle_focus_stopped)
+        bus.subscribe(E.REMINDER_DUE, self.handle_reminder_due)
         bus.subscribe(E.ANIMATIONS_TOGGLED, self.handle_animations_toggled)
         bus.subscribe(E.MOMENTUM_TOGGLED, self.handle_momentum_toggled)
         bus.subscribe(E.WANDER_TOGGLED, self.handle_wander_toggled)
@@ -238,6 +246,55 @@ class BehaviorEngine(QObject):
         if self._wander_enabled:
             self._start_wander()
 
+    # -- Phase 3: companion integration ------------------------------------------
+
+    @property
+    def focus_mode(self) -> bool:
+        return self._focus_mode
+
+    def set_focus_mode(self, enabled: bool) -> None:
+        """Calmer personality during focus sessions; direct control unaffected."""
+        self._focus_mode = enabled
+        self._scheduler.set_calm(enabled)
+
+    def _user_reaction(self, animation: str) -> None:
+        """User-triggered one-shot: never during drag, never stacked."""
+        if self._state == DRAGGING or self._state == REACTING:
+            return
+        self._cancel_movement()
+        self._react(animation)
+
+    def handle_focus_started(self, payload: dict) -> None:
+        if not self._enabled:
+            return
+        self.set_focus_mode(True)
+        self._user_reaction("happy")  # brief encouragement, then calm
+
+    def handle_focus_completed(self, payload: dict) -> None:
+        if not self._enabled:
+            return
+        self.set_focus_mode(False)
+        self._user_reaction("happy")  # celebration
+
+    def handle_break_started(self, payload: dict) -> None:
+        if not self._enabled:
+            return
+        self.set_focus_mode(False)  # break: normal personality resumes
+
+    def handle_break_completed(self, payload: dict) -> None:
+        if not self._enabled:
+            return
+        self._user_reaction("blink")
+
+    def handle_focus_stopped(self, payload: dict) -> None:
+        self.set_focus_mode(False)
+
+    def handle_reminder_due(self, payload: dict) -> None:
+        if not self._enabled:
+            return
+        # Subtle during focus, cheerful otherwise; always returns to idle.
+        self._user_reaction("blink" if self._focus_mode else "happy")
+
     def handle_mood(self, payload: dict) -> None:
         if not self._enabled:
             return
@@ -338,6 +395,8 @@ class BehaviorEngine(QObject):
     def _schedule_next(self, lo: float = SCHEDULE_MIN_S, hi: float = SCHEDULE_MAX_S) -> None:
         if not self._enabled:
             return
+        if self._focus_mode:
+            lo, hi = lo * 2.0, hi * 2.0  # calmer cadence during focus
         delay_ms = int(self._rng.uniform(lo, hi) * 1000)
         self._schedule_timer.start(delay_ms)
 
