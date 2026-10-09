@@ -113,6 +113,10 @@ class DoodleApplication:
         self.tray.wander_toggled.connect(
             lambda enabled: self.bus.publish(E.WANDER_TOGGLED, {"enabled": enabled})
         )
+        self.tray.come_here_requested.connect(self._on_tray_come_here)
+        self.tray.wander_now_requested.connect(
+            lambda: self.bus.publish(E.WANDER_NOW, {})
+        )
 
         # Application owns settings persistence + menu checkmarks for toggles
         # (the engine subscribes to the same events for behavior flags).
@@ -193,6 +197,12 @@ class DoodleApplication:
         self.settings.set_wander_enabled(enabled)
         self.window.set_wander_enabled(enabled)
         self.tray.set_wander_enabled(enabled)
+
+    def _on_tray_come_here(self) -> None:
+        from PySide6.QtGui import QCursor
+
+        pos = QCursor.pos()
+        self.bus.publish(E.COME_HERE, {"x": pos.x(), "y": pos.y()})
 
     def _on_mood_chosen(self, mood: str) -> None:
         if self.mood_state.set_mood(mood):

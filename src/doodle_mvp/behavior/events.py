@@ -82,3 +82,6 @@ CURSOR_NEAR = "cursor_near"        # payload: {distance_px: float}
 CURSOR_AWAY = "cursor_away"        # payload: {}
 MOMENTUM_TOGGLED = "momentum_toggled"  # payload: {enabled: bool}
 WANDER_TOGGLED = "wander_toggled"      # payload: {enabled: bool}
+COME_HERE = "come_here"                # payload: {x: int, y: int} cursor pos
+WANDER_NOW = "wander_now"              # payload: {}
+CURSOR_DWELL = "cursor_dwell"          # payload: {side: str}

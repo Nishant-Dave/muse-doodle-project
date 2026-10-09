@@ -45,6 +45,12 @@ DIZZY_DURATION_S = 1.5
 GLIDE_MIN_SPEED_PX_S = 120.0
 GLIDE_MAX_DIST_PX = 140.0
 GLIDE_TIME_FACTOR = 0.22
+FALL_MIN_DOWNWARD_PX_S = 700.0   # release faster than this, mostly downward -> drop
+FALL_X_DRIFT_FACTOR = 0.15
+FALL_X_DRIFT_MAX_PX = 80.0
+FALL_DURATION_MS = 650
+COME_HERE_OFFSET_PX = 180        # panda stops beside the cursor, not under it
+COME_HERE_MIN_DIST_PX = 80.0     # closer than this: just look, don't walk
 WANDER_MIN_DIST_PX = 60.0
 WANDER_MAX_DIST_PX = 180.0
 
@@ -113,6 +119,9 @@ class BehaviorEngine(QObject):
         bus.subscribe(E.DRAG_END, self.handle_drag_end)
         bus.subscribe(E.MOOD_SELECTED, self.handle_mood)
         bus.subscribe(E.CURSOR_NEAR, self.handle_cursor_near)
+        bus.subscribe(E.CURSOR_DWELL, self.handle_cursor_dwell)
+        bus.subscribe(E.COME_HERE, self.handle_come_here)
+        bus.subscribe(E.WANDER_NOW, self.handle_wander_now)
         bus.subscribe(E.ANIMATIONS_TOGGLED, self.handle_animations_toggled)
         bus.subscribe(E.MOMENTUM_TOGGLED, self.handle_momentum_toggled)
         bus.subscribe(E.WANDER_TOGGLED, self.handle_wander_toggled)
@@ -159,10 +168,21 @@ class BehaviorEngine(QObject):
         if distance >= DIZZY_DISTANCE_PX or duration >= DIZZY_DURATION_S:
             self._react("dizzy")
             return
+        vx = float(payload.get("velocity_x", 0.0))
+        vy = float(payload.get("velocity_y", 0.0))
+        speed = (vx * vx + vy * vy) ** 0.5
+        if (
+            self._momentum_enabled
+            and self._mover is not None
+            and self._get_pos is not None
+            and vy >= FALL_MIN_DOWNWARD_PX_S
+            and vy >= abs(vx) * 1.2
+        ):
+            # Thrown downward: accelerating gravity drop (Shimeji-style).
+            # Gated by the momentum toggle: off means no post-release motion.
+            self._start_fall(vx, vy)
+            return
         if self._momentum_enabled and self._mover is not None and self._get_pos is not None:
-            vx = float(payload.get("velocity_x", 0.0))
-            vy = float(payload.get("velocity_y", 0.0))
-            speed = (vx * vx + vy * vy) ** 0.5
             if speed >= GLIDE_MIN_SPEED_PX_S:
                 self._start_glide(vx, vy, speed)
                 return
@@ -177,6 +197,46 @@ class BehaviorEngine(QObject):
         if self._facing == "left":
             side = "right" if side == "left" else "left"
         self._react(f"gaze_{side}")
+
+    def handle_cursor_dwell(self, payload: dict) -> None:
+        if not self._enabled or self._state != IDLE:
+            return
+        side = str(payload.get("side", "right"))
+        if side not in ("left", "right"):
+            return
+        # The cursor lingers: turn to face it (no animation change, no
+        # tracking — a single deliberate turn, like Shimeji's "face mouse").
+        self._set_facing(side)
+
+    def handle_come_here(self, payload: dict) -> None:
+        if not self._enabled:
+            return
+        if self._state in (DRAGGING, REACTING):
+            return
+        if self._mover is None or self._get_pos is None:
+            return
+        try:
+            cx = float(payload.get("x", 0.0))
+            cy = float(payload.get("y", 0.0))
+        except (TypeError, ValueError):
+            return
+        pos = self._get_pos()
+        # Stop beside the cursor, not under it.
+        target = QPoint(int(cx - COME_HERE_OFFSET_PX), int(cy))
+        dist = ((target.x() - pos.x()) ** 2 + (target.y() - pos.y()) ** 2) ** 0.5
+        if dist < COME_HERE_MIN_DIST_PX:
+            # Already here: just look at the cursor.
+            side = "left" if cx < pos.x() else "right"
+            self._react(f"gaze_{side}")
+            return
+        self._cancel_movement()
+        self._begin_walk(target, duration_ms=1400, record_name="come_here")
+
+    def handle_wander_now(self, payload: dict) -> None:
+        if not self._enabled or self._state != IDLE:
+            return
+        if self._wander_enabled:
+            self._start_wander()
 
     def handle_mood(self, payload: dict) -> None:
         if not self._enabled:
@@ -317,14 +377,31 @@ class BehaviorEngine(QObject):
         else:
             return False
         target = QPoint(int(pos.x() + dx), int(pos.y() + dy))
+        self._begin_walk(target, duration_ms=1200, record_name="wander")
+        return True
+
+    def _begin_walk(self, target: QPoint, duration_ms: int, record_name: str) -> None:
+        """Shared walk startup for wander and come-here."""
+        pos = self._get_pos()
+        dx = target.x() - pos.x()
         self._state = MOVING
         self._schedule_timer.stop()
-        self._scheduler.record("wander")
+        self._scheduler.record(record_name)
         self._set_facing("left" if dx < 0 else "right")
         # Genuine walk cycle, cross-faded in from idle.
         self._play("walk", True, fade_ms=FADE_IDLE_TO_WALK)
-        self._mover.wander_to(target, duration_ms=1200)
-        return True
+        self._mover.wander_to(target, duration_ms=duration_ms)
+
+    def _start_fall(self, vx: float, vy: float) -> None:
+        """Accelerating gravity drop after a downward throw."""
+        pos = self._get_pos()
+        drift = max(-FALL_X_DRIFT_MAX_PX, min(FALL_X_DRIFT_MAX_PX, vx * FALL_X_DRIFT_FACTOR))
+        # Far below the screen: the mover's clamped callback stops at the edge.
+        target = QPoint(int(pos.x() + drift), int(pos.y() + 4000))
+        self._state = MOVING
+        self._schedule_timer.stop()
+        self._play("surprised", True)  # wide-eyed fall; loops for the drop
+        self._mover.fall_to(target, duration_ms=FALL_DURATION_MS)
 
     def _weighted_pick(self, variants: list[tuple[str, float]]) -> str:
         total = sum(w for _, w in variants)

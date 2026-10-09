@@ -18,6 +18,8 @@ class TrayController(QObject):
     animations_toggled = Signal(bool)
     momentum_toggled = Signal(bool)
     wander_toggled = Signal(bool)
+    come_here_requested = Signal()
+    wander_now_requested = Signal()
 
     def __init__(
         self,
@@ -98,6 +100,14 @@ class TrayController(QObject):
         self._wander_action.setChecked(self._wander_enabled)
         self._wander_action.triggered.connect(self._on_wander_triggered)
         menu.addAction(self._wander_action)
+
+        menu.addSeparator()
+        come_action = QAction("Come here", menu)
+        come_action.triggered.connect(self.come_here_requested.emit)
+        menu.addAction(come_action)
+        walk_action = QAction("Take a walk", menu)
+        walk_action.triggered.connect(self.wander_now_requested.emit)
+        menu.addAction(walk_action)
 
         menu.addSeparator()
         quit_action = QAction("Quit", menu)

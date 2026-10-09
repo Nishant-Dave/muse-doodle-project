@@ -47,8 +47,25 @@ Phase 2C added genuine motion artwork and transitions:
 - **Asset validation**: `tools/validate_assets.py` checks manifest
   integrity, dimensions, format, and transparency (also a pytest test).
 
+Phase 2D closed the Shimeji interaction gap (see `SHIMEJI_GAP_ANALYSIS.md`):
+
+- **Gravity drop**: a fast downward throw now falls with accelerating
+  gravity (ease-in) to the bottom of the screen, wide-eyed (`surprised`
+  loop), then the `land` settle. Bounded and interruptible as always.
+- **"Come here"**: right-click or tray menu → the panda walks to beside
+  your cursor (180px offset, clamped, interruptible). Too close already?
+  It just looks at you instead.
+- **"Take a walk"**: on-demand wander from the menu or tray.
+- **Cursor dwell**: linger near the panda ~2.5s and it turns to face you —
+  a single deliberate turn, no tracking.
+- No new artwork: the fall honestly reuses the `surprised` loop.
+
+Deliberate deviations from Shimeji (documented in the gap analysis):
+bounded momentum, no continuous cursor chasing, no wall climbing, one panda.
+
 Behavior priorities: shutdown/safety > dragging > reactions (poke, mood,
-cursor) > movement (glide, wander) > autonomous personality > idle.
+cursor) > movement (glide, fall, wander, come-here) > autonomous
+personality > idle.
 
 ## Quick start
 
@@ -94,12 +111,16 @@ lifecycle/shutdown.
 ## Using Doodle
 
 - **Drag** the panda to move it. Position is remembered between launches.
-  Release a fast drag for a short momentum glide; a long/slow drag earns a
-  dizzy shake.
+  Release a fast drag for a short momentum glide; throw it downward for a
+  gravity drop; a long/slow drag earns a dizzy shake.
 - **Click / poke** the panda for a playful wink-and-wave.
-- **Move your cursor near it**: it gets curious (once — it won't nag you).
+- **Move your cursor near it**: it glances your way (once — it won't nag
+  you). Linger ~2.5s and it turns to face you.
 - **Leave it alone**: it blinks, yawns, looks around, and occasionally
   wanders a short distance on its own.
+- **Right-click** the panda (or tray menu): **Come here** (walks to your
+  cursor), **Take a walk**, toggles (**Animations**, **Glide after drag**,
+  **Wander around**), mood, or **Quit**.
 - **Double-click** (or right-click → "How are you feeling?…", or the tray
   icon menu → "Log mood…") to open the mood popup: Happy / Okay / Sad /
   Stressed. The panda reacts and confirms "Saved: … ✓".
@@ -205,13 +226,14 @@ headless, so they are **NOT VERIFIED** (not claimed).
 - Implemented and automatically tested: app lifecycle, animation system
   (16 states, 61 frames from one parametric rig), cross-fade transitions
   (single-timer, interrupt-safe), drag/click input with velocity-tracked
-  release, behavior priorities
+  release, gravity drop on downward throws, directed come-here walks,
+  on-demand wander, cursor dwell facing, behavior priorities
   (drag > reactions > movement > personality > idle), cursor proximity with
-  hysteresis + cooldown and side-aware gaze, eased glide/wander with bounds
-  and cancellation, landing settle, facing direction (incl. gaze flip when
-  mirrored), scheduler weights/cooldowns/history, mood reactions with
+  hysteresis + cooldown and side-aware gaze, eased glide/wander/fall with
+  bounds and cancellation, landing settle, facing direction (incl. gaze flip
+  when mirrored), scheduler weights/cooldowns/history, mood reactions with
   variation, asset validation, QSettings preferences, platform adapter
-  structure, clean shutdown. **98/98 tests pass** (80 baseline + 18 new).
+  structure, clean shutdown. **113/113 tests pass** (98 baseline + 15 new).
 - Implemented, needs manual visual verification: everything marked
   NOT VERIFIED in the checklist above — transparency, always-on-top feel,
   motion smoothness/feel, tray on Windows. New artwork (walk strip, land
