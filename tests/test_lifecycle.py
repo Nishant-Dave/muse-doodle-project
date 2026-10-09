@@ -19,7 +19,7 @@ def test_shutdown_stops_timers_and_is_idempotent(qapp):
     app = DoodleApplication([])
     app.self_check()  # includes shutdown
     assert not app.player.is_playing
-    assert not app.engine._idle_timer.isActive()
+    assert not app.engine._schedule_timer.isActive()
     app.shutdown()  # second call must be safe
     assert not app.player.is_playing
 
@@ -62,6 +62,6 @@ def test_animations_disabled_at_startup_shows_static(qapp, tmp_path):
     try:
         assert not app.player.is_playing
         assert app.player.current_animation == "idle"
-        assert not app.engine._idle_timer.isActive()
+        assert not app.engine._schedule_timer.isActive()
     finally:
         app.shutdown()

@@ -10,6 +10,28 @@ from a single parametric rig (`tools/character_rig.py`) with soft 2.5D-style
 lighting, fur texture, glossy expressive eyes, and a coordinated 12-state
 expression library. See `assets/source/DESIGN.md` for the design rationale.
 
+Phase 2B made it move and feel alive:
+
+- **Personality scheduler** (`behavior/scheduler.py`): weighted random
+  activities with cooldowns, recent-history suppression, and deliberate
+  calm inactivity — no mechanical loops, no immediate repeats.
+- **Cursor awareness** (`desktop/cursor_monitor.py`): edge-triggered
+  proximity detection with hysteresis and a 20s cooldown; the panda turns
+  curious when you approach, never flickers or re-triggers.
+- **Natural dragging**: velocity-tracked release with a bounded,
+  eased momentum glide (max ~140px, ~350ms), dizzy recovery after long/fast
+  drags, screen-edge clamping.
+- **Autonomous wandering**: occasional short strolls to nearby spots with
+  ease-in-out motion and facing direction (mirrored rendering, no new
+  assets needed).
+- **Mood reactions with variation** (e.g. stressed → stressed/yawn).
+- New preferences: `behavior/momentum_enabled`, `behavior/wander_enabled`,
+  `behavior/proximity_radius_px` — toggleable from the panda's right-click
+  menu or the tray menu ("Glide after drag", "Wander around").
+
+Behavior priorities: shutdown/safety > dragging > reactions (poke, mood,
+cursor) > movement (glide, wander) > autonomous personality > idle.
+
 ## Quick start
 
 ```bash
@@ -54,13 +76,18 @@ lifecycle/shutdown.
 ## Using Doodle
 
 - **Drag** the panda to move it. Position is remembered between launches.
-- **Click / poke** the panda for a playful reaction.
+  Release a fast drag for a short momentum glide; a long/slow drag earns a
+  dizzy shake.
+- **Click / poke** the panda for a playful wink-and-wave.
+- **Move your cursor near it**: it gets curious (once — it won't nag you).
+- **Leave it alone**: it blinks, yawns, looks around, and occasionally
+  wanders a short distance on its own.
 - **Double-click** (or right-click → "How are you feeling?…", or the tray
   icon menu → "Log mood…") to open the mood popup: Happy / Okay / Sad /
   Stressed. The panda reacts and confirms "Saved: … ✓".
-- **Right-click** the panda (or tray menu) to toggle **Animations** on/off
-  or **Quit**.
-- **Tray icon**: Show/Hide, mood, animations toggle, quit.
+- **Right-click** the panda (or tray menu): toggle **Animations**,
+  **Glide after drag**, **Wander around**, or **Quit**.
+- **Tray icon**: Show/Hide, mood, toggles, quit.
 
 ## Architecture
 
@@ -114,40 +141,61 @@ No window-management code needs to change.
 
 ## Manual acceptance checklist
 
-Visual/platform behavior that automated tests cannot verify — run through on
-Windows:
+Items marked **(auto)** are covered by automated tests. Items marked
+**(visual)** need your eyes on a real Windows desktop.
 
-- [ ] Launch: panda appears as a floating companion, no title bar, no ugly
-      rectangle around the artwork (transparent background).
-- [ ] Panda stays above ordinary windows but doesn't block the taskbar.
-- [ ] Drag the panda: it follows the cursor with a stable offset, shows the
-      drag pose, doesn't jump or get stuck.
-- [ ] Release after a short drag: returns to idle smoothly.
-- [ ] Release after a long/fast drag: plays the dizzy reaction, then idle.
-- [ ] Click/poke: playful surprise → happy bounce, then back to idle.
-- [ ] Rapid repeated clicks: no stutter, no stacked animations.
-- [ ] Leave idle 1–2 minutes: occasional blinks, rare yawn, never mechanical.
-- [ ] Double-click / right-click menu / tray → mood popup opens near panda.
-- [ ] Select each mood: panda reacts (happy bounce / blink / sad / stressed)
-      and popup confirms "Saved: … ✓", then closes by itself.
-- [ ] Popup dismisses by clicking outside it and with Escape.
-- [ ] Toggle Animations off: panda freezes on a static frame, idle stops.
-      Toggle on: idle animation resumes.
-- [ ] Move panda, quit, relaunch: position is restored.
-- [ ] Quit via menu/tray: process exits, no lingering python process, no
-      timers left running (check Task Manager).
-- [ ] Restart: starts in the default/saved state with no errors.
+- [ ] **(visual)** Launch: panda appears floating, transparent, no title bar.
+- [ ] **(visual)** Leave idle several minutes: blinks, occasional yawn /
+      curious tilt / rare playful moment; long calm pauses; nothing
+      mechanical or repetitive.
+- [ ] **(visual)** Move cursor slowly toward it: curious reaction once, then
+      calm while cursor stays.
+- [ ] **(visual)** Move cursor rapidly past it: at most one reaction, no
+      flicker or animation spam.
+- [ ] **(auto)** Cursor hysteresis/cooldown logic (tests/test_cursor.py).
+- [ ] **(visual)** Hover, click, poke repeatedly: playful wink+wave each
+      poke, no stacked/stuttering animations.
+- [ ] **(visual)** Drag slowly across screen: follows with stable offset,
+      drag pose, no lag or jumping.
+- [ ] **(visual)** Release a fast drag: short eased glide that settles
+      (bounded ~140px); release a long/slow drag: dizzy then idle.
+- [ ] **(auto)** Glide bounds, easing shape, cancellation, wander target
+      bounds (tests/test_mover.py, test_behavior_2b.py).
+- [ ] **(visual)** Interrupt a wander with a drag or click: movement stops
+      immediately, reaction plays.
+- [ ] **(visual)** Select each mood: matching reaction with slight
+      variation; returns to idle naturally.
+- [ ] **(visual)** Wander: occasionally strolls a short distance facing the
+      right way; never leaves the screen or covers your work aggressively.
+- [ ] **(visual)** Toggle "Glide after drag" / "Wander around" off in the
+      right-click menu: behavior stops; toggle back on: resumes.
+- [ ] **(visual)** Leave running 30+ minutes: no slowdown, no runaway
+      timers, no CPU spin (check Task Manager).
+- [ ] **(visual)** Screen edges and multi-monitor: panda stays reachable.
+- [ ] **(auto)** Timer cleanup on shutdown; no duplicated handlers;
+      animation never restarts back-to-back (tests/test_lifecycle.py,
+      test_behavior_2b.py).
+- [ ] **(visual)** No flickering, teleporting, or unresponsive window at
+      any point.
 
 ## Project status (honest)
 
 - Implemented and automatically tested: app lifecycle, animation system
-  (12 states, 43 frames from one parametric rig), drag/click input, behavior
-  priorities (poke -> playful; idle tick -> blink/curious/yawn), mood
-  registration + reactions, QSettings preferences, platform adapter
-  structure, clean shutdown. 47/47 tests pass.
-- Implemented, needs manual visual verification: transparency, always-on-top
-  feel, animation smoothness/feel, tray on Windows (see checklist above).
-  The new artwork was visually inspected frame-by-frame at runtime size on
-  the development machine; Windows desktop rendering still needs your eyes.
+  (12 states, 43 frames from one parametric rig), drag/click input with
+  velocity-tracked release, behavior priorities
+  (drag > reactions > movement > personality > idle), cursor proximity with
+  hysteresis + cooldown, eased glide/wander with bounds and cancellation,
+  facing direction, scheduler weights/cooldowns/history, mood reactions
+  with variation, QSettings preferences, platform adapter structure, clean
+  shutdown. **80/80 tests pass** (47 baseline + 33 new).
+- Implemented, needs manual visual verification: everything marked
+  (visual) in the checklist above — transparency, always-on-top feel,
+  motion smoothness/feel, tray on Windows. Motion logic is unit-tested;
+  how it *feels* needs your eyes.
 - Not implemented (out of scope): AI/LLM, journaling, SQLite,
   calendar/browser/email integrations, notifications, cloud sync, installer.
+- Known limitations: no true frame blending (transitions are paced
+  one-shots, not cross-fades — stated honestly, not claimed); gaze is the
+  curious head-tilt reaction (assets have no directional pupils);
+  `surprised`/`sleepy` exist but have no autonomous trigger beyond the
+  scheduler; wander uses the idle loop (no walk-cycle artwork).

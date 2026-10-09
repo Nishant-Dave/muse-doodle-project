@@ -78,3 +78,7 @@ DRAG_END = "drag_end"              # payload: {distance_px: float, duration_s: f
 IDLE_TICK = "idle_tick"            # behavior engine's randomized idle timer fired
 MOOD_SELECTED = "mood_selected"    # payload: {mood: str}
 ANIMATIONS_TOGGLED = "animations_toggled"  # payload: {enabled: bool}
+CURSOR_NEAR = "cursor_near"        # payload: {distance_px: float}
+CURSOR_AWAY = "cursor_away"        # payload: {}
+MOMENTUM_TOGGLED = "momentum_toggled"  # payload: {enabled: bool}
+WANDER_TOGGLED = "wander_toggled"      # payload: {enabled: bool}

@@ -98,18 +98,20 @@ def test_unknown_mood_ignored(engine, emitted):
     assert engine.state == IDLE
 
 
-def test_idle_tick_triggers_idle_personality(engine, emitted):
+def test_scheduled_activity_plays_personality_one_shot(engine, emitted):
     _start(engine, emitted)
-    engine.handle_idle_tick()
-    assert emitted[-1][0] in ("blink", "yawn", "curious")
-    assert emitted[-1][1] is False
+    engine._on_schedule_timeout()
+    name, loop = emitted[-1]
+    assert name in ("blink", "yawn", "curious", "sleepy", "happy", "playful", "surprised")
+    assert loop is False
     assert engine.state == REACTING
+    assert name in engine._scheduler.history  # recorded for cooldowns
 
 
-def test_idle_tick_ignored_when_busy(engine, emitted):
+def test_scheduled_activity_ignored_when_busy(engine, emitted):
     _start(engine, emitted)
     engine.handle_drag_start()
-    engine.handle_idle_tick()
+    engine._on_schedule_timeout()
     assert emitted[-1] == ("drag", True)
 
 
@@ -119,7 +121,7 @@ def test_disabling_animations_shows_static_and_ignores_input(engine, emitted):
     assert emitted[-1] == ("static:idle", False)
     assert engine.state == IDLE
     engine.handle_poke()
-    engine.handle_idle_tick()
+    engine._on_schedule_timeout()
     engine.handle_mood({"mood": "happy"})
     assert emitted[-1] == ("static:idle", False)  # nothing new played
     engine.set_animations_enabled(True)

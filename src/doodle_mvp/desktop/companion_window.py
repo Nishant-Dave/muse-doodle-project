@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QMouseEvent
@@ -31,6 +32,8 @@ log = logging.getLogger(__name__)
 
 CLICK_MAX_DISTANCE_PX = 6
 CLICK_MAX_DURATION_S = 0.6
+VELOCITY_SAMPLES = 6
+MIN_VELOCITY_DT_S = 0.02
 
 
 class CompanionWindow(QWidget):
@@ -60,8 +63,11 @@ class CompanionWindow(QWidget):
         self._dragging = False
         self._drag_start_emitted = False
         self._max_distance = 0.0
+        self._samples: deque[tuple[QPoint, float]] = deque(maxlen=VELOCITY_SAMPLES)
 
         self._animations_enabled = settings.animations_enabled()
+        self._momentum_enabled = settings.momentum_enabled()
+        self._wander_enabled = settings.wander_enabled()
 
     # -- public ---------------------------------------------------------------
 
@@ -75,6 +81,26 @@ class CompanionWindow(QWidget):
     def set_animations_enabled(self, enabled: bool) -> None:
         self._animations_enabled = enabled
 
+    def set_momentum_enabled(self, enabled: bool) -> None:
+        self._momentum_enabled = enabled
+
+    def set_wander_enabled(self, enabled: bool) -> None:
+        self._wander_enabled = enabled
+
+    def center(self) -> QPoint:
+        """Global position of the panda's center (cursor-proximity anchor)."""
+        return self.mapToGlobal(self.rect().center())
+
+    def release_velocity(self) -> tuple[float, float]:
+        """Pointer velocity in px/s from recent drag samples."""
+        if len(self._samples) < 2:
+            return (0.0, 0.0)
+        (p0, t0), (p1, t1) = self._samples[0], self._samples[-1]
+        dt = t1 - t0
+        if dt < MIN_VELOCITY_DT_S:
+            return (0.0, 0.0)
+        return ((p1.x() - p0.x()) / dt, (p1.y() - p0.y()) / dt)
+
     # -- mouse input ------------------------------------------------------------
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
@@ -85,6 +111,8 @@ class CompanionWindow(QWidget):
             self._dragging = False
             self._drag_start_emitted = False
             self._max_distance = 0.0
+            self._samples.clear()
+            self._samples.append((self._press_global, self._press_time))
             event.accept()
         elif event.button() == Qt.MouseButton.RightButton:
             self._show_context_menu(event.globalPosition().toPoint())
@@ -103,6 +131,7 @@ class CompanionWindow(QWidget):
             if not self._drag_start_emitted:
                 self._drag_start_emitted = True
                 self._bus.publish(E.DRAG_START)
+            self._samples.append((current, time.monotonic()))
             assert self._press_window is not None
             new_pos = positioning.clamp_to_screen(self, self._press_window + delta)
             self.move(new_pos)
@@ -113,13 +142,20 @@ class CompanionWindow(QWidget):
             return
         duration = time.monotonic() - self._press_time
         was_drag = self._dragging
+        vx, vy = self.release_velocity()
         self._press_global = None
         self._dragging = False
+        self._samples.clear()
         if was_drag:
             self._settings.set_position(self.pos())
             self._bus.publish(
                 E.DRAG_END,
-                {"distance_px": self._max_distance, "duration_s": duration},
+                {
+                    "distance_px": self._max_distance,
+                    "duration_s": duration,
+                    "velocity_x": vx,
+                    "velocity_y": vy,
+                },
             )
         elif duration <= CLICK_MAX_DURATION_S:
             self._bus.publish(E.POKE)
@@ -143,8 +179,28 @@ class CompanionWindow(QWidget):
         anim_action = QAction("Animations", menu)
         anim_action.setCheckable(True)
         anim_action.setChecked(self._animations_enabled)
-        anim_action.triggered.connect(self._on_animations_triggered)
+        anim_action.triggered.connect(
+            lambda checked: self._bus.publish(E.ANIMATIONS_TOGGLED, {"enabled": checked})
+        )
         menu.addAction(anim_action)
+
+        glide_action = QAction("Glide after drag", menu)
+        glide_action.setCheckable(True)
+        glide_action.setChecked(self._momentum_enabled)
+        glide_action.setToolTip("Gentle momentum glide when releasing a fast drag")
+        glide_action.triggered.connect(
+            lambda checked: self._bus.publish(E.MOMENTUM_TOGGLED, {"enabled": checked})
+        )
+        menu.addAction(glide_action)
+
+        wander_action = QAction("Wander around", menu)
+        wander_action.setCheckable(True)
+        wander_action.setChecked(self._wander_enabled)
+        wander_action.setToolTip("Occasionally stroll to a nearby spot on its own")
+        wander_action.triggered.connect(
+            lambda checked: self._bus.publish(E.WANDER_TOGGLED, {"enabled": checked})
+        )
+        menu.addAction(wander_action)
 
         menu.addSeparator()
         quit_action = QAction("Quit Doodle", menu)
@@ -152,11 +208,6 @@ class CompanionWindow(QWidget):
         menu.addAction(quit_action)
 
         menu.popup(global_pos)
-
-    def _on_animations_triggered(self, checked: bool) -> None:
-        self._animations_enabled = checked
-        self._settings.set_animations_enabled(checked)
-        self._bus.publish(E.ANIMATIONS_TOGGLED, {"enabled": checked})
 
     # -- Qt events ------------------------------------------------------------------
 
