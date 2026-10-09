@@ -29,6 +29,24 @@ Phase 2B made it move and feel alive:
   `behavior/proximity_radius_px` — toggleable from the panda's right-click
   menu or the tray menu ("Glide after drag", "Wander around").
 
+Phase 2C added genuine motion artwork and transitions:
+
+- **Walk cycle** (`walk`, 6 frames @ 8fps loop): waddle locomotion with
+  weight shift, alternating foot lifts, body bob, and counter-tilted head —
+  generated from new rig parameters (`lean`, `body_dx`, `step_phase`).
+  Wander now walks instead of idling in place.
+- **Directional gaze** (`gaze_left`/`gaze_right`, 4 frames): head turn +
+  shifted eyes (new `gaze_dx`/`gaze_dy` rig params). Cursor approach looks
+  toward the physical cursor side (flipped when the artwork is mirrored).
+- **Landing settle** (`land`, 4 frames @ 8fps): crouch → squash → rebound →
+  rest, played after every glide and wander.
+- **Cross-fade transitions**: `AnimationPlayer.play(name, loop, fade_ms)`
+  alpha-blends between compatible poses (idle→walk 150ms, drag→glide
+  120ms, →land 100ms) on the single reused QTimer; incompatible poses cut
+  directly to avoid ghosting; interrupted fades restart cleanly.
+- **Asset validation**: `tools/validate_assets.py` checks manifest
+  integrity, dimensions, format, and transparency (also a pytest test).
+
 Behavior priorities: shutdown/safety > dragging > reactions (poke, mood,
 cursor) > movement (glide, wander) > autonomous personality > idle.
 
@@ -141,61 +159,69 @@ No window-management code needs to change.
 
 ## Manual acceptance checklist
 
-Items marked **(auto)** are covered by automated tests. Items marked
-**(visual)** need your eyes on a real Windows desktop.
+Code-level items are covered by automated tests (**PASS** below).
+Visual/feel items need a real Windows desktop — I could not verify these
+headless, so they are **NOT VERIFIED** (not claimed).
 
-- [ ] **(visual)** Launch: panda appears floating, transparent, no title bar.
-- [ ] **(visual)** Leave idle several minutes: blinks, occasional yawn /
-      curious tilt / rare playful moment; long calm pauses; nothing
-      mechanical or repetitive.
-- [ ] **(visual)** Move cursor slowly toward it: curious reaction once, then
-      calm while cursor stays.
-- [ ] **(visual)** Move cursor rapidly past it: at most one reaction, no
-      flicker or animation spam.
-- [ ] **(auto)** Cursor hysteresis/cooldown logic (tests/test_cursor.py).
-- [ ] **(visual)** Hover, click, poke repeatedly: playful wink+wave each
-      poke, no stacked/stuttering animations.
-- [ ] **(visual)** Drag slowly across screen: follows with stable offset,
-      drag pose, no lag or jumping.
-- [ ] **(visual)** Release a fast drag: short eased glide that settles
-      (bounded ~140px); release a long/slow drag: dizzy then idle.
-- [ ] **(auto)** Glide bounds, easing shape, cancellation, wander target
-      bounds (tests/test_mover.py, test_behavior_2b.py).
-- [ ] **(visual)** Interrupt a wander with a drag or click: movement stops
-      immediately, reaction plays.
-- [ ] **(visual)** Select each mood: matching reaction with slight
-      variation; returns to idle naturally.
-- [ ] **(visual)** Wander: occasionally strolls a short distance facing the
-      right way; never leaves the screen or covers your work aggressively.
-- [ ] **(visual)** Toggle "Glide after drag" / "Wander around" off in the
-      right-click menu: behavior stops; toggle back on: resumes.
-- [ ] **(visual)** Leave running 30+ minutes: no slowdown, no runaway
-      timers, no CPU spin (check Task Manager).
-- [ ] **(visual)** Screen edges and multi-monitor: panda stays reachable.
-- [ ] **(auto)** Timer cleanup on shutdown; no duplicated handlers;
-      animation never restarts back-to-back (tests/test_lifecycle.py,
-      test_behavior_2b.py).
-- [ ] **(visual)** No flickering, teleporting, or unresponsive window at
-      any point.
+### Phase 2C acceptance
+
+1. Start the application — **PASS** (automated: self-check + full suite).
+2. Observe a complete walk cycle — logic **PASS** (walk loop plays during
+   wander, facing matches direction, arrival → land → idle; visually
+   **NOT VERIFIED**).
+3. Enable/disable wandering (right-click menu) — **PASS** (toggle respected;
+   feel **NOT VERIFIED**).
+4. Observe direction changes — **PASS** (facing flips with movement
+   direction, gaze flips when mirrored; visual smoothness **NOT VERIFIED**).
+5. Trigger cursor-aware gaze — logic **PASS** (side-aware gaze_left/right,
+   hysteresis + 20s cooldown; feel **NOT VERIFIED**).
+6. Drag and release the panda — **PASS** (glide bounds/easing tested;
+   tactile feel **NOT VERIFIED**).
+7. Observe the landing sequence — **PASS** (land plays after every glide
+   and wander, then idle; artwork strip visually inspected, in-app motion
+   **NOT VERIFIED**).
+8. Interrupt one animation with another — **PASS** (fades cancel cleanly,
+   priorities tested: drag > reactions > movement).
+9. Observe the return to idle — **PASS** (all paths end at idle; no
+   animation restarts).
+10. Repeated interactions for flicker/artifacts — cross-fade midpoint
+    visually inspected (no ghosting); in-app **NOT VERIFIED**.
+11. Leave running several minutes — timer lifecycle **PASS** (shutdown
+    stops everything, no leaked timers); long-run CPU **NOT VERIFIED**.
+12. Phase 1 + 2B functionality intact — **PASS** (full suite green,
+    no regressions).
+
+### General (visual, needs Windows)
+
+- [ ] Transparency: no rectangle/halo around the artwork.
+- [ ] Always-on-top feel against native apps; tray behaves.
+- [ ] Idle variety over several minutes feels calm, not mechanical.
+- [ ] Drag/glide/land sequence feels physical and responsive.
+- [ ] No flicker, teleporting, or unresponsive window.
+- [ ] Screen edges and multi-monitor: panda stays reachable.
 
 ## Project status (honest)
 
 - Implemented and automatically tested: app lifecycle, animation system
-  (12 states, 43 frames from one parametric rig), drag/click input with
-  velocity-tracked release, behavior priorities
+  (16 states, 61 frames from one parametric rig), cross-fade transitions
+  (single-timer, interrupt-safe), drag/click input with velocity-tracked
+  release, behavior priorities
   (drag > reactions > movement > personality > idle), cursor proximity with
-  hysteresis + cooldown, eased glide/wander with bounds and cancellation,
-  facing direction, scheduler weights/cooldowns/history, mood reactions
-  with variation, QSettings preferences, platform adapter structure, clean
-  shutdown. **80/80 tests pass** (47 baseline + 33 new).
+  hysteresis + cooldown and side-aware gaze, eased glide/wander with bounds
+  and cancellation, landing settle, facing direction (incl. gaze flip when
+  mirrored), scheduler weights/cooldowns/history, mood reactions with
+  variation, asset validation, QSettings preferences, platform adapter
+  structure, clean shutdown. **98/98 tests pass** (80 baseline + 18 new).
 - Implemented, needs manual visual verification: everything marked
-  (visual) in the checklist above — transparency, always-on-top feel,
-  motion smoothness/feel, tray on Windows. Motion logic is unit-tested;
-  how it *feels* needs your eyes.
+  NOT VERIFIED in the checklist above — transparency, always-on-top feel,
+  motion smoothness/feel, tray on Windows. New artwork (walk strip, land
+  strip, gaze frames, fade midpoint) was visually inspected frame-by-frame
+  on the development machine; in-app Windows rendering still needs
+  your eyes.
 - Not implemented (out of scope): AI/LLM, journaling, SQLite,
   calendar/browser/email integrations, notifications, cloud sync, installer.
-- Known limitations: no true frame blending (transitions are paced
-  one-shots, not cross-fades — stated honestly, not claimed); gaze is the
-  curious head-tilt reaction (assets have no directional pupils);
-  `surprised`/`sleepy` exist but have no autonomous trigger beyond the
-  scheduler; wander uses the idle loop (no walk-cycle artwork).
+- Known limitations: cross-fades only for compatible pose pairs
+  (incompatible faces cut directly — deliberate, avoids ghosting); walk is
+  a chibi waddle, not a realistic quadruped gait (matches the seated
+  character design); `surprised`/`sleepy` have no dedicated triggers beyond
+  the scheduler; wander reuses eased linear paths (no pathfinding).

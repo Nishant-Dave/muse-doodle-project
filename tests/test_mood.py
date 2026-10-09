@@ -64,8 +64,8 @@ def test_mood_selection_reaches_behavior_engine(qapp, bus, emitted):
     from doodle_mvp.behavior.engine import BehaviorEngine
 
     engine = BehaviorEngine(bus, rng=random.Random(42))
-    engine.play_requested.connect(lambda name, loop: emitted.append((name, loop)))
+    engine.play_requested.connect(lambda name, loop, fade: emitted.append((name, loop, fade)))
     engine.start()
     bus.publish(E.MOOD_SELECTED, {"mood": "stressed"})
-    assert emitted[-1] == ("stressed", False)
+    assert emitted[-1] == ("stressed", False, 0)
     engine.shutdown()

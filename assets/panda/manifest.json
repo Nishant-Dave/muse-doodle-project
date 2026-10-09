@@ -125,5 +125,51 @@
       "drag/frame_00.png",
       "drag/frame_01.png"
     ]
+  },
+  "walk": {
+    "fps": 8,
+    "loop": true,
+    "description": "Waddle walk cycle: weight shift, alternating steps, bob",
+    "frames": [
+      "walk/frame_00.png",
+      "walk/frame_01.png",
+      "walk/frame_02.png",
+      "walk/frame_03.png",
+      "walk/frame_04.png",
+      "walk/frame_05.png"
+    ]
+  },
+  "gaze_left": {
+    "fps": 6,
+    "loop": false,
+    "description": "Look left: head turn + shifted gaze, ease back",
+    "frames": [
+      "gaze_left/frame_00.png",
+      "gaze_left/frame_01.png",
+      "gaze_left/frame_02.png",
+      "gaze_left/frame_03.png"
+    ]
+  },
+  "gaze_right": {
+    "fps": 6,
+    "loop": false,
+    "description": "Look right: head turn + shifted gaze, ease back",
+    "frames": [
+      "gaze_right/frame_00.png",
+      "gaze_right/frame_01.png",
+      "gaze_right/frame_02.png",
+      "gaze_right/frame_03.png"
+    ]
+  },
+  "land": {
+    "fps": 8,
+    "loop": false,
+    "description": "Landing settle: crouch -> squash -> rebound -> rest",
+    "frames": [
+      "land/frame_00.png",
+      "land/frame_01.png",
+      "land/frame_02.png",
+      "land/frame_03.png"
+    ]
   }
 }

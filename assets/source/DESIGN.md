@@ -32,6 +32,5 @@ junctions, and under the chin.
 
 ## Expressions
 
-10 states + blink + drag: idle, blink, yawn, happy, curious, sleepy,
-surprised, dizzy, sad, stressed, playful, drag. See `assets/panda/README.md`
-for the per-animation frame map.
+12 states + blink + drag (Phase 2A), plus walk, gaze_left, gaze_right, and
+land (Phase 2C). See `assets/panda/README.md` for the per-animation frame map.

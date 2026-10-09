@@ -28,6 +28,8 @@ WEIGHTS: dict[str, float] = {
     "playful": 7.0,
     "surprised": 5.0,
     "wander": 6.0,
+    "gaze_left": 5.0,
+    "gaze_right": 5.0,
 }
 
 # Activity -> minimum seconds between selections.
@@ -39,6 +41,8 @@ COOLDOWNS: dict[str, float] = {
     "wander": 90.0,
     "yawn": 30.0,
     "curious": 20.0,
+    "gaze_left": 45.0,
+    "gaze_right": 45.0,
     "blink": 0.0,
 }
 
