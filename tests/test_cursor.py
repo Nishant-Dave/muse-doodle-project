@@ -94,3 +94,35 @@ def test_shutdown_stops_timer(qapp, bus):
     mon.start()  # idempotent restart
     mon.start()
     mon.shutdown()
+
+
+def test_dwell_publishes_after_lingering(qapp, bus, emitted):
+    bus.subscribe(E.CURSOR_DWELL, lambda p: emitted.append(("dwell", p)))
+    mon, holder, clock = make_monitor(bus, QPoint(1010, 1010), dwell_s=2.5)
+    mon.poll()  # enter
+    clock.advance(1.0)
+    mon.poll()
+    assert emitted == []
+    clock.advance(2.0)
+    mon.poll()  # 3.0s inside -> dwell fires once
+    assert len(emitted) == 1
+    assert emitted[0][1]["side"] == "right"
+    clock.advance(5.0)
+    mon.poll()  # no repeat while lingering
+    assert len(emitted) == 1
+    mon.shutdown()
+
+
+def test_dwell_resets_on_exit(qapp, bus, emitted):
+    bus.subscribe(E.CURSOR_DWELL, emitted.append)
+    mon, holder, clock = make_monitor(bus, QPoint(1010, 1010), dwell_s=2.5)
+    mon.poll()
+    holder["pos"] = QPoint(0, 0)
+    mon.poll()  # leave before dwell time
+    clock.advance(10.0)
+    holder["pos"] = QPoint(1010, 1010)
+    mon.poll()  # re-enter: dwell timer restarts
+    clock.advance(1.0)
+    mon.poll()
+    assert emitted == []
+    mon.shutdown()

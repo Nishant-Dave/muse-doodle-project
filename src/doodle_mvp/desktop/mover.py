@@ -35,8 +35,14 @@ def ease_in_out_quad(t: float) -> float:
     return 1.0 - (-2.0 * t + 2.0) ** 2 / 2.0
 
 
+def ease_in_quad(t: float) -> float:
+    """Accelerating ease (gravity feel): slow start, fast finish."""
+    t = max(0.0, min(1.0, t))
+    return t * t
+
+
 class Mover(QObject):
-    arrived = Signal(str)  # kind: "glide" | "wander" | "cancelled"
+    arrived = Signal(str)  # kind: "glide" | "wander" | "fall" | "cancelled"
 
     def __init__(
         self,
@@ -71,6 +77,11 @@ class Mover(QObject):
 
     def wander_to(self, target: QPoint, duration_ms: int = 1200) -> None:
         self._begin("wander", target, duration_ms, ease_in_out_quad)
+
+    def fall_to(self, target: QPoint, duration_ms: int = 650) -> None:
+        """Accelerating drop (gravity feel); the move callback clamps to
+        the screen so the target may be far below the visible area."""
+        self._begin("fall", target, duration_ms, ease_in_quad)
 
     def cancel(self) -> None:
         if not self._active:

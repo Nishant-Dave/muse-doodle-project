@@ -203,11 +203,28 @@ class CompanionWindow(QWidget):
         menu.addAction(wander_action)
 
         menu.addSeparator()
+        come_action = QAction("Come here", menu)
+        come_action.setToolTip("Walk over to the cursor")
+        come_action.triggered.connect(self._on_come_here)
+        menu.addAction(come_action)
+
+        walk_action = QAction("Take a walk", menu)
+        walk_action.setToolTip("Wander to a nearby spot right now")
+        walk_action.triggered.connect(lambda: self._bus.publish(E.WANDER_NOW, {}))
+        menu.addAction(walk_action)
+
+        menu.addSeparator()
         quit_action = QAction("Quit Doodle", menu)
         quit_action.triggered.connect(self.request_quit.emit)
         menu.addAction(quit_action)
 
         menu.popup(global_pos)
+
+    def _on_come_here(self) -> None:
+        from PySide6.QtGui import QCursor
+
+        pos = QCursor.pos()
+        self._bus.publish(E.COME_HERE, {"x": pos.x(), "y": pos.y()})
 
     # -- Qt events ------------------------------------------------------------------
 
