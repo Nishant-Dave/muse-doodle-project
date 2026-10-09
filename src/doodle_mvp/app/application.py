@@ -26,6 +26,15 @@ from ..behavior.scheduler import PersonalityScheduler
 from ..character.animation import AnimationPlayer
 from ..character.assets import AssetLoader
 from ..character.character import PandaCharacter
+from ..companion.dialogs import (
+    FocusPanel,
+    NoticePopup,
+    ReminderDialog,
+    ReminderListDialog,
+    ScratchpadDialog,
+)
+from ..companion.focus import FocusTimer
+from ..companion.reminders import ReminderScheduler, ReminderStore
 from ..desktop import positioning
 from ..desktop.companion_window import CompanionWindow
 from ..desktop.cursor_monitor import CursorMonitor
@@ -78,6 +87,18 @@ class DoodleApplication:
         self.mood_state = MoodState()
         self.popup = MoodPopup()
 
+        # Phase 3: companion features (local only).
+        self.focus_timer = FocusTimer(self.bus, self.settings)
+        self.reminder_store = ReminderStore()
+        self.reminder_scheduler = ReminderScheduler(self.bus, self.reminder_store)
+        self.focus_panel = FocusPanel(self.focus_timer, self.bus)
+        self.reminder_list_dialog = ReminderListDialog(self.reminder_store, self.bus)
+        self.scratchpad_dialog = ScratchpadDialog()
+        self.notice_popup = NoticePopup()
+        self.notice_popup.dismissed.connect(self._on_notice_dismissed)
+        self.notice_popup.closed.connect(self._show_next_notice)
+        self._notice_queue: list[dict] = []
+
         icon = self._tray_icon()
         self.tray = TrayController(
             icon,
@@ -100,6 +121,23 @@ class DoodleApplication:
 
         self.window.request_mood_popup.connect(lambda: self.popup.show_near(self.window))
         self.window.request_quit.connect(self.shutdown_and_quit)
+        self.window.request_focus_panel.connect(self._show_focus_panel)
+        self.window.request_reminder_dialog.connect(self._open_reminder_dialog)
+        self.window.request_reminder_list.connect(self._show_reminder_list)
+        self.window.request_scratchpad.connect(self._show_scratchpad)
+        self.window.set_focus_state_provider(self._focus_state)
+
+        self.tray.request_show_hide.connect(self._toggle_visible)
+        self.tray.request_mood_popup.connect(lambda: self.popup.show_near(self.window))
+        self.tray.request_quit.connect(self.shutdown_and_quit)
+        self.tray.request_focus_panel.connect(self._show_focus_panel)
+        self.tray.request_reminder_dialog.connect(self._open_reminder_dialog)
+        self.tray.request_reminder_list.connect(self._show_reminder_list)
+        self.tray.request_scratchpad.connect(self._show_scratchpad)
+        self.tray.set_focus_state_provider(self._focus_state)
+        self.tray.focus_control.connect(
+            lambda action: self.bus.publish(E.FOCUS_CONTROL, {"action": action})
+        )
 
         self.tray.request_show_hide.connect(self._toggle_visible)
         self.tray.request_mood_popup.connect(lambda: self.popup.show_near(self.window))
@@ -125,6 +163,14 @@ class DoodleApplication:
         self.bus.subscribe(E.WANDER_TOGGLED, self._apply_wander_toggled)
 
         self.popup.mood_chosen.connect(self._on_mood_chosen)
+
+        # Companion wiring.
+        self.bus.subscribe(E.REMINDER_DUE, self._on_reminder_due)
+        self.bus.subscribe(E.FOCUS_TICK, self._on_focus_tick)
+        for ev in (E.FOCUS_STOPPED, E.FOCUS_COMPLETED, E.BREAK_COMPLETED):
+            self.bus.subscribe(ev, lambda _p: self._reset_tray_tooltip())
+        self.focus_timer.start()
+        self.reminder_scheduler.start()
 
         self.engine.start()
         if not self.settings.animations_enabled():
@@ -169,6 +215,12 @@ class DoodleApplication:
         self.player.shutdown()
         self.tray.shutdown()
         self.popup.close()
+        for dialog in (self.focus_panel, self.reminder_list_dialog,
+                       self.scratchpad_dialog, self.notice_popup):
+            try:
+                dialog.close()
+            except Exception:  # noqa: BLE001
+                pass
         self.bus.clear()
 
     # -- slots ----------------------------------------------------------------------
@@ -207,6 +259,69 @@ class DoodleApplication:
     def _on_mood_chosen(self, mood: str) -> None:
         if self.mood_state.set_mood(mood):
             self.bus.publish(E.MOOD_SELECTED, {"mood": mood})
+
+    # -- Phase 3: companion slots -----------------------------------------------------
+
+    def _focus_state(self) -> tuple[str, str]:
+        return (self.focus_timer.state, self.focus_timer.active_kind)
+
+    def _show_focus_panel(self) -> None:
+        self.focus_panel.refresh()
+        self.focus_panel.show()
+        self.focus_panel.raise_()
+        self.focus_panel.activateWindow()
+
+    def _open_reminder_dialog(self) -> None:
+        dlg = ReminderDialog()
+        if dlg.exec() == ReminderDialog.DialogCode.Accepted:
+            record = dlg.result_record()
+            if record:
+                created = self.reminder_store.add(**record)
+                self.bus.publish(E.REMINDER_CREATED,
+                                 {"id": created["id"], "title": created["title"]})
+
+    def _show_reminder_list(self) -> None:
+        self.reminder_list_dialog.refresh()
+        self.reminder_list_dialog.show()
+        self.reminder_list_dialog.raise_()
+        self.reminder_list_dialog.activateWindow()
+
+    def _show_scratchpad(self) -> None:
+        self.scratchpad_dialog.show()
+        self.scratchpad_dialog.raise_()
+        self.scratchpad_dialog.activateWindow()
+
+    def _on_reminder_due(self, payload: dict) -> None:
+        self._notice_queue.append(payload)
+        self._show_next_notice()
+
+    def _show_next_notice(self) -> None:
+        if self.notice_popup.isVisible() or not self._notice_queue:
+            return
+        payload = self._notice_queue.pop(0)
+        self.notice_popup.show_near(
+            self.window,
+            str(payload.get("id", "")),
+            str(payload.get("title", "")),
+            overdue=bool(payload.get("overdue", False)),
+        )
+
+    def _on_notice_dismissed(self, reminder_id: str) -> None:
+        if self.reminder_store.dismiss(reminder_id):
+            self.bus.publish(E.REMINDER_DISMISSED, {"id": reminder_id})
+        self._show_next_notice()
+
+    def _on_focus_tick(self, payload: dict) -> None:
+        kind = str(payload.get("kind", "focus"))
+        remaining = int(payload.get("remaining_s", 0))
+        label = "Focus" if kind == "focus" else "Break"
+        mins, secs = divmod(remaining, 60)
+        if self.tray.is_available:
+            self.tray.set_tooltip(f"Doodle — {label} {mins:02d}:{secs:02d} left")
+
+    def _reset_tray_tooltip(self) -> None:
+        if self.tray.is_available:
+            self.tray.set_tooltip("Doodle — desktop companion")
 
     def _tray_icon(self) -> QPixmap:
         frames = self.assets.frames_for("idle")
