@@ -1,0 +1,10 @@
+# Doodle Phase 1 MVP requirements
+#
+# Runtime needs only PySide6. Tested with PySide6 6.11.2 on Python 3.12
+# (spec asks Python 3.11+; 3.12 used here).
+PySide6>=6.6
+
+# Dev / test only:
+# pytest>=8
+# Pillow is needed ONLY to regenerate artwork via tools/generate_artwork.py,
+# not for running the application.
