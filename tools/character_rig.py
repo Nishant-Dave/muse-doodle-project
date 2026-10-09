@@ -70,6 +70,13 @@ class Pose:
     wave: bool = False           # right paw raised waving
     extras: tuple = ()           # tear|sweat|zzz|stars|motion|tongue_out
     tongue: bool = False
+    # -- Phase 2C: locomotion & gaze ---
+    lean: float = 0.0            # body roll, degrees (+ = clockwise); waddle
+    body_dx: int = 0             # whole-body horizontal shift (weight shift)
+    step_phase: float = 0.0      # -1..1 foot lift: + = left foot raised
+    squash: float = 0.0          # 0..1 vertical compression (landing)
+    gaze_dx: int = 0             # eye/pupil shift, master px (look direction)
+    gaze_dy: int = 0
 
 
 # ------------------------------------------------------------------ helpers ---
@@ -181,7 +188,7 @@ def _draw_fur(base: Image.Image):
 
 # ------------------------------------------------------------------- body ---
 
-def _render_body(wave: bool = False) -> Image.Image:
+def _render_body(wave: bool = False, step_phase: float = 0.0) -> Image.Image:
     L = _new()
     # torso
     _ellipse(L, 480, 730, 235, 215, WHITE_FUR)
@@ -194,16 +201,19 @@ def _render_body(wave: bool = False) -> Image.Image:
     if not wave:
         _ellipse(L, 698, 710, 72, 138, BLACK_FUR, rotation=14)
         _ellipse(L, 715, 680, 26, 60, BLACK_HI[:3] + (90,), rotation=14)
-    # feet
-    _ellipse(L, 372, 908, 96, 60, BLACK_FUR)
-    _ellipse(L, 588, 908, 96, 60, BLACK_FUR)
-    _ellipse(L, 350, 892, 40, 22, BLACK_HI[:3] + (110,))
-    _ellipse(L, 610, 892, 40, 22, BLACK_HI[:3] + (110,))
+    # feet: alternate lift for the walk cycle (+phase = left foot raised)
+    lift = 30.0
+    ldy = -max(0.0, step_phase) * lift
+    rdy = -max(0.0, -step_phase) * lift
+    _ellipse(L, 372, 908 + ldy, 96, 60, BLACK_FUR)
+    _ellipse(L, 588, 908 + rdy, 96, 60, BLACK_FUR)
+    _ellipse(L, 350, 892 + ldy, 40, 22, BLACK_HI[:3] + (110,))
+    _ellipse(L, 610, 892 + rdy, 40, 22, BLACK_HI[:3] + (110,))
     _draw_fur(L)
     return L
 
 
-def _body_shading(wave: bool = False) -> Image.Image:
+def _body_shading(wave: bool = False, step_phase: float = 0.0) -> Image.Image:
     """Lighting overlays for the body, masked to the body silhouette."""
     shade = _new()
     d = ImageDraw.Draw(shade)
@@ -220,15 +230,18 @@ def _body_shading(wave: bool = False) -> Image.Image:
         da.ellipse([540, 560, 660, 700], fill=(30, 22, 30, 70))   # arm/torso R
     da.ellipse([380, 880, 580, 960], fill=(30, 22, 30, 60))   # feet shadow
     ao = _soft(ao, 28)
-    # mask to body silhouette
+    # mask to body silhouette (feet follow the step phase)
+    lift = 30.0
+    ldy = -max(0.0, step_phase) * lift
+    rdy = -max(0.0, -step_phase) * lift
     mask = _new()
     dm = ImageDraw.Draw(mask)
     dm.ellipse([480 - 235, 730 - 215, 480 + 235, 730 + 215], fill=(255, 255, 255, 255))
     dm.ellipse([262 - 72, 710 - 138, 262 + 72, 710 + 138], fill=(255, 255, 255, 255))
     if not wave:
         dm.ellipse([698 - 72, 710 - 138, 698 + 72, 710 + 138], fill=(255, 255, 255, 255))
-    dm.ellipse([372 - 96, 908 - 60, 372 + 96, 908 + 60], fill=(255, 255, 255, 255))
-    dm.ellipse([588 - 96, 908 - 60, 588 + 96, 908 + 60], fill=(255, 255, 255, 255))
+    dm.ellipse([372 - 96, 908 + ldy - 60, 372 + 96, 908 + ldy + 60], fill=(255, 255, 255, 255))
+    dm.ellipse([588 - 96, 908 + rdy - 60, 588 + 96, 908 + rdy + 60], fill=(255, 255, 255, 255))
     mask = _soft(mask, 6)
     out = _new()
     out.alpha_composite(Image.composite(shade, _new(), mask))
@@ -293,8 +306,21 @@ def _head_shading() -> Image.Image:
 
 # ------------------------------------------------------------------- face ---
 
-def _draw_eye(L: Image.Image, cx, cy, style: str, mirror: bool = False):
-    """Glossy panda eye with expression variants. cx,cy = eye center."""
+def _draw_eye(L: Image.Image, cx, cy, style: str, mirror: bool = False,
+              gaze: tuple[int, int] = (0, 0)):
+    """Glossy panda eye with expression variants. cx,cy = eye center.
+
+    ``gaze`` shifts the whole eye (outline, gradient, highlights) inside the
+    eye patch, producing a genuine look direction without artifacts. The
+    patch is ~28px wider than the eye, so |gaze| <= 16 stays clean.
+    """
+    layer = _new(L.size[0])
+    _draw_eye_inner(layer, cx, cy, style, mirror)
+    gx, gy = gaze
+    L.alpha_composite(layer, (int(gx), int(gy)) if (gx or gy) else (0, 0))
+
+
+def _draw_eye_inner(L: Image.Image, cx, cy, style: str, mirror: bool = False):
     d = ImageDraw.Draw(L)
     if style == "open":
         _eye_base(L, cx, cy, 52, 62, (58, 50, 58, 255), EYE_DARK)
@@ -402,11 +428,12 @@ def _render_face(pose: Pose) -> Image.Image:
     else:
         d.ellipse([258, 536, 348, 588], fill=bl)
         d.ellipse([612, 536, 702, 588], fill=bl)
-    # eyes
+    # eyes (gaze shifts both eyes together for a unified look direction)
+    gaze = (pose.gaze_dx, pose.gaze_dy)
     left_style = "wink" if pose.eye == "wink" else pose.eye
     right_style = "open" if pose.eye == "wink" else pose.eye
-    _draw_eye(L, 362, 436, left_style, mirror=False)
-    _draw_eye(L, 598, 432, right_style, mirror=True)
+    _draw_eye(L, 362, 436, left_style, mirror=False, gaze=gaze)
+    _draw_eye(L, 598, 432, right_style, mirror=True, gaze=gaze)
     # nose: dimensional rounded triangle
     d.polygon([(480 - 52, 548), (480 + 52, 548), (480, 606)], fill=NOSE)
     d.ellipse([480 - 52, 536, 480 + 52, 586], fill=NOSE)
@@ -467,13 +494,38 @@ def _wave_arm() -> Image.Image:
 
 # ------------------------------------------------------------------ render ---
 
+def _apply_locomotion(canvas: Image.Image, pose: Pose) -> Image.Image:
+    """Phase 2C: squash, weight shift, and body roll for walk/landing.
+
+    Squash compresses vertically and widens slightly, anchored at the feet
+    (y=920) so the character stays grounded. Lean rolls the whole character
+    around the feet point. All transforms keep the transparent background.
+    """
+    img = canvas
+    if pose.squash:
+        sy = 1.0 - 0.14 * pose.squash
+        sx = 1.0 + 0.10 * pose.squash
+        w, h = int(MASTER * sx), int(MASTER * sy)
+        small = img.resize((w, h), Image.BICUBIC)
+        tmp = _new()
+        tmp.alpha_composite(small, (MASTER // 2 - w // 2, 920 - h))
+        img = tmp
+    if pose.body_dx:
+        tmp = _new()
+        tmp.alpha_composite(img, (int(pose.body_dx), 0))
+        img = tmp
+    if pose.lean:
+        img = img.rotate(-pose.lean, resample=Image.BICUBIC, center=(480, 920))
+    return img
+
+
 def render_pose(pose: Pose) -> Image.Image:
     """Render one master-resolution (960px) frame for the given pose."""
     # body (with optional wave arm replacing the resting right arm)
-    body = _render_body(pose.wave)
+    body = _render_body(pose.wave, pose.step_phase)
     if pose.wave:
         body.alpha_composite(_wave_arm())
-    body.alpha_composite(_body_shading(pose.wave))
+    body.alpha_composite(_body_shading(pose.wave, pose.step_phase))
 
     # head group (head + face rotate together around the neck)
     head = _render_head(pose)
@@ -503,6 +555,10 @@ def render_pose(pose: Pose) -> Image.Image:
     else:
         canvas.alpha_composite(tmp)
         canvas.alpha_composite(head, (0, by))
+    # Phase 2C locomotion (walk lean/shift, landing squash) applies to the
+    # composed character, before world-space extras.
+    if pose.lean or pose.body_dx or pose.squash:
+        canvas = _apply_locomotion(canvas, pose)
     canvas.alpha_composite(_extras_world(pose))
     return canvas
 

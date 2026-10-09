@@ -73,25 +73,33 @@ def make_engine(bus, emitted, **kwargs):
         bus, rng=rng, scheduler=scheduler, mover=mover, monitor=monitor,
         get_pos=lambda: QPoint(500, 500), **kwargs,
     )
-    engine.play_requested.connect(lambda n, l: emitted.append((n, l)))
+    engine.play_requested.connect(lambda n, l, f: emitted.append((n, l, f)))
     engine.facing_changed.connect(lambda f: emitted.append(("facing", f)))
     engine.start()
     return engine, mover, monitor
 
 
-def test_cursor_near_triggers_curious_once(qapp, bus, emitted):
+def test_cursor_near_triggers_directional_gaze(qapp, bus, emitted):
     engine, _, _ = make_engine(bus, emitted)
-    bus.publish(E.CURSOR_NEAR, {"distance_px": 100.0})
-    assert emitted[-1] == ("curious", False)
+    bus.publish(E.CURSOR_NEAR, {"distance_px": 100.0, "side": "left"})
+    assert emitted[-1] == ("gaze_left", False, 0)
     assert engine.state == REACTING
+    engine.shutdown()
+
+
+def test_cursor_gaze_flips_when_facing_left(qapp, bus, emitted):
+    engine, _, _ = make_engine(bus, emitted)
+    engine._set_facing("left")  # artwork mirrored: gaze must flip to stay physical
+    bus.publish(E.CURSOR_NEAR, {"distance_px": 100.0, "side": "left"})
+    assert emitted[-1] == ("gaze_right", False, 0)
     engine.shutdown()
 
 
 def test_cursor_near_ignored_while_dragging(qapp, bus, emitted):
     engine, _, _ = make_engine(bus, emitted)
     engine.handle_drag_start()
-    bus.publish(E.CURSOR_NEAR, {"distance_px": 50.0})
-    assert emitted[-1] == ("drag", True)
+    bus.publish(E.CURSOR_NEAR, {"distance_px": 50.0, "side": "left"})
+    assert emitted[-1] == ("drag", True, 0)
     engine.shutdown()
 
 
@@ -108,7 +116,13 @@ def test_fast_drag_release_glides_with_bounded_target(qapp, bus, emitted):
     # speed 1000 * 0.22 = 220 -> clamped to 140px max
     assert target == QPoint(640, 500)
     assert duration == 350
+    # glide pose cross-fades in from the drag pose
+    assert ("idle", True, 120) in emitted
     mover.arrived.emit("glide")
+    # landing sequence plays before returning to idle
+    assert emitted[-1] == ("land", False, 100)
+    assert engine.state == REACTING
+    engine.on_animation_finished("land")
     assert engine.state == IDLE
     engine.shutdown()
 
@@ -144,21 +158,26 @@ def test_poke_cancels_wander(qapp, bus, emitted):
     assert engine.state == MOVING
     engine.handle_poke()
     assert ("cancel",) in mover.calls
-    assert emitted[-1] == ("playful", False)
+    assert emitted[-1] == ("playful", False, 0)
     assert engine.state == REACTING
     engine.shutdown()
 
 
 def test_wander_sets_facing_and_returns_to_idle(qapp, bus, emitted):
-    # schedule delay, idle-check (proceed), roll (wander), dx, dy
-    rng = ScriptedRng([0.9, 0.5, 0.0, 0.9, 0.1])
+    # schedule delay, idle-check (proceed), roll (wander), dx, dy, re-schedule
+    rng = ScriptedRng([0.9, 0.5, 0.0, 0.9, 0.1, 0.5])
     sched = PersonalityScheduler(rng=rng, weights={"wander": 1.0})
     engine, mover, _ = make_engine(bus, emitted, rng=rng, scheduler=sched)
     engine._on_schedule_timeout()
     assert engine.state == MOVING
     assert ("facing", "right") in emitted
+    assert ("walk", True, 150) in emitted  # walk cross-fades in from idle
     assert mover.calls[-1][0] == "wander"
     mover.arrived.emit("wander")
+    # stopping transitions through the landing settle, then idle
+    assert emitted[-1] == ("land", False, 100)
+    assert engine.state == REACTING
+    engine.on_animation_finished("land")
     assert engine.state == IDLE
     engine.shutdown()
 
@@ -182,11 +201,11 @@ def test_cancelled_move_does_not_change_state(qapp, bus, emitted):
 
 def test_idle_animation_is_not_restarted(qapp, bus, emitted):
     engine, _, _ = make_engine(bus, emitted)
-    idles = [e for e in emitted if e == ("idle", True)]
+    idles = [e for e in emitted if e == ("idle", True, 0)]
     assert len(idles) == 1
     engine._to_idle()
     engine._to_idle()
-    assert [e for e in emitted if e == ("idle", True)] == idles
+    assert [e for e in emitted if e == ("idle", True, 0)] == idles
     engine.shutdown()
 
 
@@ -205,6 +224,6 @@ def test_mood_during_wander_reacts_and_cancels_move(qapp, bus, emitted):
     assert engine._start_wander() is True
     bus.publish(E.MOOD_SELECTED, {"mood": "happy"})
     assert ("cancel",) in mover.calls
-    assert emitted[-1] == ("happy", False)
+    assert emitted[-1] == ("happy", False, 0)
     assert engine.state == REACTING
     engine.shutdown()

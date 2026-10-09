@@ -48,6 +48,12 @@ GLIDE_TIME_FACTOR = 0.22
 WANDER_MIN_DIST_PX = 60.0
 WANDER_MAX_DIST_PX = 180.0
 
+# Cross-fade durations (ms) per transition. Short on purpose: long fades feel
+# sluggish, and incompatible poses (e.g. happy bounce) must cut, not ghost.
+FADE_IDLE_TO_WALK = 150
+FADE_DRAG_TO_GLIDE = 120
+FADE_TO_LAND = 100
+
 SCHEDULE_MIN_S = 4.0
 SCHEDULE_MAX_S = 9.0
 SCHEDULE_IDLE_MIN_S = 8.0
@@ -55,9 +61,9 @@ SCHEDULE_IDLE_MAX_S = 16.0
 
 
 class BehaviorEngine(QObject):
-    play_requested = Signal(str, bool)   # (animation_name, loop)
-    static_requested = Signal(str)       # show first frame, no timer
-    facing_changed = Signal(str)         # "left" | "right"
+    play_requested = Signal(str, bool, int)  # (animation_name, loop, fade_ms)
+    static_requested = Signal(str)           # show first frame, no timer
+    facing_changed = Signal(str)             # "left" | "right"
 
     def __init__(
         self,
@@ -80,6 +86,7 @@ class BehaviorEngine(QObject):
         self._enabled = True
         self._momentum_enabled = True
         self._wander_enabled = True
+        self._facing = "right"
         self._last_played: tuple[str, bool] | None = None
         self._schedule_timer = QTimer(self)
         self._schedule_timer.setSingleShot(True)
@@ -164,7 +171,12 @@ class BehaviorEngine(QObject):
     def handle_cursor_near(self, payload: dict) -> None:
         if not self._enabled or self._state != IDLE:
             return
-        self._react("curious")
+        side = str(payload.get("side", "right"))
+        # The artwork is mirrored when facing left, so flip the gaze
+        # direction to keep looking at the physical cursor position.
+        if self._facing == "left":
+            side = "right" if side == "left" else "left"
+        self._react(f"gaze_{side}")
 
     def handle_mood(self, payload: dict) -> None:
         if not self._enabled:
@@ -216,7 +228,8 @@ class BehaviorEngine(QObject):
         if kind == "cancelled":
             return  # something else took over; it owns the state now
         if self._state == MOVING:
-            self._to_idle()
+            # Settle with the landing sequence before returning to idle.
+            self._react("land", fade_ms=FADE_TO_LAND)
 
     # -- personality schedule ----------------------------------------------------
 
@@ -236,19 +249,19 @@ class BehaviorEngine(QObject):
 
     # -- internals ------------------------------------------------------------------
 
-    def _react(self, animation: str) -> None:
+    def _react(self, animation: str, fade_ms: int = 0) -> None:
         """Play a one-shot reaction, returning to idle afterwards."""
         self._state = REACTING
         self._schedule_timer.stop()
         self._scheduler.record(animation)
-        self._play(animation, False)
+        self._play(animation, False, fade_ms)
 
-    def _play(self, name: str, loop: bool) -> None:
+    def _play(self, name: str, loop: bool, fade_ms: int = 0) -> None:
         # Never restart the same animation back-to-back.
         if self._last_played == (name, loop):
             return
         self._last_played = (name, loop)
-        self.play_requested.emit(name, loop)
+        self.play_requested.emit(name, loop, fade_ms)
 
     def _emit_static(self, name: str) -> None:
         self._last_played = None
@@ -272,6 +285,10 @@ class BehaviorEngine(QObject):
         if self._mover is not None and self._mover.is_active:
             self._mover.cancel()
 
+    def _set_facing(self, facing: str) -> None:
+        self._facing = facing
+        self.facing_changed.emit(facing)
+
     def _start_glide(self, vx: float, vy: float, speed: float) -> None:
         pos = self._get_pos()
         dist = min(GLIDE_MAX_DIST_PX, speed * GLIDE_TIME_FACTOR)
@@ -279,8 +296,9 @@ class BehaviorEngine(QObject):
         target = QPoint(int(pos.x() + nx * dist), int(pos.y() + ny * dist))
         self._state = MOVING
         self._schedule_timer.stop()
-        self.facing_changed.emit("left" if nx < 0 else "right")
-        self._play("idle", True)  # settle back to the calm pose for the glide
+        self._set_facing("left" if nx < 0 else "right")
+        # Settle pose for the glide, cross-faded from the drag pose.
+        self._play("idle", True, fade_ms=FADE_DRAG_TO_GLIDE)
         self._mover.glide_to(target, duration_ms=350)
 
     def _start_wander(self) -> bool:
@@ -302,8 +320,9 @@ class BehaviorEngine(QObject):
         self._state = MOVING
         self._schedule_timer.stop()
         self._scheduler.record("wander")
-        self.facing_changed.emit("left" if dx < 0 else "right")
-        self._play("idle", True)  # already idle; guard prevents restart
+        self._set_facing("left" if dx < 0 else "right")
+        # Genuine walk cycle, cross-faded in from idle.
+        self._play("walk", True, fade_ms=FADE_IDLE_TO_WALK)
         self._mover.wander_to(target, duration_ms=1200)
         return True
 

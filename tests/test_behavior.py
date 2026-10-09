@@ -5,7 +5,7 @@ from doodle_mvp.behavior.engine import DRAGGING, IDLE, REACTING
 
 
 def _start(engine, emitted):
-    engine.play_requested.connect(lambda name, loop: emitted.append((name, loop)))
+    engine.play_requested.connect(lambda name, loop, fade: emitted.append((name, loop, fade)))
     engine.static_requested.connect(lambda name: emitted.append(("static:" + name, False)))
     engine.start()
     return emitted
@@ -13,7 +13,7 @@ def _start(engine, emitted):
 
 def test_start_plays_idle_loop(engine, emitted):
     _start(engine, emitted)
-    assert emitted == [("idle", True)]
+    assert emitted == [("idle", True, 0)]
     assert engine.state == IDLE
 
 
@@ -28,13 +28,13 @@ def test_start_is_idempotent(engine, emitted):
 def test_poke_plays_once_and_returns_to_idle(engine, emitted):
     _start(engine, emitted)
     engine.handle_poke()
-    assert emitted[-1] == ("playful", False)
+    assert emitted[-1] == ("playful", False, 0)
     assert engine.state == REACTING
     # Repeated poke while reacting is ignored: no stacked animations.
     engine.handle_poke()
-    assert emitted[-1] == ("playful", False)
+    assert emitted[-1] == ("playful", False, 0)
     engine.on_animation_finished("playful")
-    assert emitted[-1] == ("idle", True)
+    assert emitted[-1] == ("idle", True, 0)
     assert engine.state == IDLE
 
 
@@ -42,12 +42,12 @@ def test_drag_preempts_and_short_drag_returns_to_idle(engine, emitted):
     _start(engine, emitted)
     engine.handle_poke()  # reacting...
     engine.handle_drag_start()  # drag wins
-    assert emitted[-1] == ("drag", True)
+    assert emitted[-1] == ("drag", True, 0)
     assert engine.state == DRAGGING
     engine.handle_poke()  # ignored while dragging
-    assert emitted[-1] == ("drag", True)
+    assert emitted[-1] == ("drag", True, 0)
     engine.handle_drag_end({"distance_px": 10.0, "duration_s": 0.4})
-    assert emitted[-1] == ("idle", True)
+    assert emitted[-1] == ("idle", True, 0)
     assert engine.state == IDLE
 
 
@@ -55,53 +55,53 @@ def test_long_drag_ends_with_dizzy(engine, emitted):
     _start(engine, emitted)
     engine.handle_drag_start()
     engine.handle_drag_end({"distance_px": 500.0, "duration_s": 0.5})
-    assert emitted[-1] == ("dizzy", False)
+    assert emitted[-1] == ("dizzy", False, 0)
     assert engine.state == REACTING
     engine.on_animation_finished("dizzy")
-    assert emitted[-1] == ("idle", True)
+    assert emitted[-1] == ("idle", True, 0)
 
 
 def test_slow_drag_ends_with_dizzy(engine, emitted):
     _start(engine, emitted)
     engine.handle_drag_start()
     engine.handle_drag_end({"distance_px": 5.0, "duration_s": 3.0})
-    assert emitted[-1] == ("dizzy", False)
+    assert emitted[-1] == ("dizzy", False, 0)
 
 
 def test_mood_selects_matching_reaction(engine, emitted):
     _start(engine, emitted)
     engine.handle_mood({"mood": "sad"})
-    assert emitted[-1] == ("sad", False)
+    assert emitted[-1] == ("sad", False, 0)
     engine.on_animation_finished("sad")
     engine.handle_mood({"mood": "happy"})
-    assert emitted[-1] == ("happy", False)
+    assert emitted[-1] == ("happy", False, 0)
     engine.on_animation_finished("happy")
     engine.handle_mood({"mood": "stressed"})
-    assert emitted[-1] == ("stressed", False)
+    assert emitted[-1] == ("stressed", False, 0)
     engine.on_animation_finished("stressed")
     engine.handle_mood({"mood": "okay"})
-    assert emitted[-1] == ("blink", False)
+    assert emitted[-1] == ("blink", False, 0)
 
 
 def test_mood_ignored_while_dragging(engine, emitted):
     _start(engine, emitted)
     engine.handle_drag_start()
     engine.handle_mood({"mood": "happy"})
-    assert emitted[-1] == ("drag", True)
+    assert emitted[-1] == ("drag", True, 0)
     assert engine.state == DRAGGING
 
 
 def test_unknown_mood_ignored(engine, emitted):
     _start(engine, emitted)
     engine.handle_mood({"mood": "ecstatic"})
-    assert emitted == [("idle", True)]
+    assert emitted == [("idle", True, 0)]
     assert engine.state == IDLE
 
 
 def test_scheduled_activity_plays_personality_one_shot(engine, emitted):
     _start(engine, emitted)
     engine._on_schedule_timeout()
-    name, loop = emitted[-1]
+    name, loop, _fade = emitted[-1]
     assert name in ("blink", "yawn", "curious", "sleepy", "happy", "playful", "surprised")
     assert loop is False
     assert engine.state == REACTING
@@ -112,7 +112,7 @@ def test_scheduled_activity_ignored_when_busy(engine, emitted):
     _start(engine, emitted)
     engine.handle_drag_start()
     engine._on_schedule_timeout()
-    assert emitted[-1] == ("drag", True)
+    assert emitted[-1] == ("drag", True, 0)
 
 
 def test_disabling_animations_shows_static_and_ignores_input(engine, emitted):
@@ -125,16 +125,16 @@ def test_disabling_animations_shows_static_and_ignores_input(engine, emitted):
     engine.handle_mood({"mood": "happy"})
     assert emitted[-1] == ("static:idle", False)  # nothing new played
     engine.set_animations_enabled(True)
-    assert emitted[-1] == ("idle", True)
+    assert emitted[-1] == ("idle", True, 0)
 
 
 def test_events_flow_through_bus(engine, emitted, bus):
     _start(engine, emitted)
     bus.publish(E.POKE)
-    assert emitted[-1] == ("playful", False)
+    assert emitted[-1] == ("playful", False, 0)
     bus.publish(E.DRAG_START)
-    assert emitted[-1] == ("drag", True)
+    assert emitted[-1] == ("drag", True, 0)
     bus.publish(E.DRAG_END, {"distance_px": 1.0, "duration_s": 0.1})
-    assert emitted[-1] == ("idle", True)
+    assert emitted[-1] == ("idle", True, 0)
     bus.publish(E.MOOD_SELECTED, {"mood": "sad"})
-    assert emitted[-1] == ("sad", False)
+    assert emitted[-1] == ("sad", False, 0)

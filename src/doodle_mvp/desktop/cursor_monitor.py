@@ -86,7 +86,10 @@ class CursorMonitor(QObject):
             self._inside = True
             if now - self._last_enter >= self._cooldown:
                 self._last_enter = now
-                self._bus.publish(E.CURSOR_NEAR, {"distance_px": distance})
+                side = "left" if pos.x() < anchor.x() else "right"
+                self._bus.publish(
+                    E.CURSOR_NEAR, {"distance_px": distance, "side": side}
+                )
         elif self._inside and distance > self._exit_radius:
             self._inside = False
             self._bus.publish(E.CURSOR_AWAY, {})

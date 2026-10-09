@@ -156,6 +156,54 @@ ANIMATIONS: dict[str, dict] = {
             Pose(eye="wide", mouth="o", bob=5, ear_perk=0.8),
         ],
     },
+    # -- Phase 2C: locomotion, gaze, landing ---
+    "walk": {
+        "fps": 8, "loop": True,
+        "description": "Waddle walk cycle: weight shift, alternating steps, bob",
+        "frames": [
+            Pose(eye="open", mouth="small", lean=0, body_dx=0, bob=0, step_phase=0),
+            Pose(eye="open", mouth="small", lean=-8, body_dx=-14, bob=-6,
+                 step_phase=1.0, head_tilt=4, head_dx=8),
+            Pose(eye="open", mouth="small", lean=-3, body_dx=-6, bob=-10,
+                 step_phase=0.2, head_tilt=2),
+            Pose(eye="open", mouth="small", lean=8, body_dx=14, bob=-6,
+                 step_phase=-1.0, head_tilt=-4, head_dx=-8),
+            Pose(eye="open", mouth="small", lean=3, body_dx=6, bob=-10,
+                 step_phase=-0.2, head_tilt=-2),
+            Pose(eye="open", mouth="small", lean=0, body_dx=0, bob=-4,
+                 step_phase=0),
+        ],
+    },
+    "gaze_left": {
+        "fps": 6, "loop": False,
+        "description": "Look left: head turn + shifted gaze, ease back",
+        "frames": [
+            Pose(eye="open", mouth="small"),
+            Pose(eye="open", mouth="small", gaze_dx=-14, head_dx=-16, head_tilt=-3),
+            Pose(eye="open", mouth="small", gaze_dx=-14, head_dx=-16, head_tilt=-3),
+            Pose(eye="open", mouth="small", gaze_dx=-5, head_dx=-6),
+        ],
+    },
+    "gaze_right": {
+        "fps": 6, "loop": False,
+        "description": "Look right: head turn + shifted gaze, ease back",
+        "frames": [
+            Pose(eye="open", mouth="small"),
+            Pose(eye="open", mouth="small", gaze_dx=14, head_dx=16, head_tilt=3),
+            Pose(eye="open", mouth="small", gaze_dx=14, head_dx=16, head_tilt=3),
+            Pose(eye="open", mouth="small", gaze_dx=5, head_dx=6),
+        ],
+    },
+    "land": {
+        "fps": 8, "loop": False,
+        "description": "Landing settle: crouch -> squash -> rebound -> rest",
+        "frames": [
+            Pose(eye="open", mouth="small", squash=0.35, bob=6),
+            Pose(eye="happy", mouth="small", squash=0.7, bob=10, cheek_lift=True),
+            Pose(eye="open", mouth="smile", squash=0.15, bob=-6),
+            Pose(eye="open", mouth="small", bob=0),
+        ],
+    },
 }
 
 DESIGN_MD = """# Doodle — Master Character Design (Phase 2A)
@@ -192,9 +240,8 @@ junctions, and under the chin.
 
 ## Expressions
 
-10 states + blink + drag: idle, blink, yawn, happy, curious, sleepy,
-surprised, dizzy, sad, stressed, playful, drag. See `assets/panda/README.md`
-for the per-animation frame map.
+12 states + blink + drag (Phase 2A), plus walk, gaze_left, gaze_right, and
+land (Phase 2C). See `assets/panda/README.md` for the per-animation frame map.
 """
 
 

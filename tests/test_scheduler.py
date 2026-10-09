@@ -92,3 +92,16 @@ def test_eligible_never_empty_for_blink():
     sched.record("yawn")
     sched.record("curious")
     assert "blink" in sched.eligible()
+
+
+def test_gaze_activities_have_weights_and_cooldowns():
+    from doodle_mvp.behavior.scheduler import COOLDOWNS, WEIGHTS
+
+    assert WEIGHTS["gaze_left"] > 0 and WEIGHTS["gaze_right"] > 0
+    assert COOLDOWNS["gaze_left"] >= 30 and COOLDOWNS["gaze_right"] >= 30
+
+
+def test_land_is_never_scheduled():
+    from doodle_mvp.behavior.scheduler import WEIGHTS
+
+    assert "land" not in WEIGHTS  # transitional only, played by the engine
