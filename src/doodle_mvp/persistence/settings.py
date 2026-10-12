@@ -25,6 +25,13 @@ FOCUS_MINUTES_KEY = "focus/focus_minutes"
 BREAK_MINUTES_KEY = "focus/break_minutes"
 LONG_BREAK_MINUTES_KEY = "focus/long_break_minutes"
 SESSIONS_BEFORE_LONG_BREAK_KEY = "focus/sessions_before_long_break"
+# -- Phase 4: context awareness --------------------------------------------------
+CONTEXT_ENABLED_KEY = "context/enabled"
+CONTEXT_ADAPTIVE_KEY = "context/adaptive_personality"
+CONTEXT_QUIET_KEY = "context/quiet_mode"
+CONTEXT_IDLE_SHORT_KEY = "context/idle_short_s"
+CONTEXT_IDLE_LONG_KEY = "context/idle_long_s"
+CONTEXT_SAMPLE_KEY = "context/sample_s"
 
 
 class AppSettings:
@@ -131,6 +138,50 @@ class AppSettings:
             log.warning("Ignoring invalid %s value %r", key, raw)
             return default
         return max(lo, min(hi, value))
+
+    # -- context awareness ------------------------------------------------------
+
+    def context_enabled(self) -> bool:
+        return self._s.value(CONTEXT_ENABLED_KEY, True, type=bool)
+
+    def set_context_enabled(self, enabled: bool) -> None:
+        self._s.setValue(CONTEXT_ENABLED_KEY, bool(enabled))
+
+    def context_adaptive_personality(self) -> bool:
+        return self._s.value(CONTEXT_ADAPTIVE_KEY, True, type=bool)
+
+    def set_context_adaptive_personality(self, enabled: bool) -> None:
+        self._s.setValue(CONTEXT_ADAPTIVE_KEY, bool(enabled))
+
+    def context_quiet_mode(self) -> bool:
+        return self._s.value(CONTEXT_QUIET_KEY, False, type=bool)
+
+    def set_context_quiet_mode(self, enabled: bool) -> None:
+        self._s.setValue(CONTEXT_QUIET_KEY, bool(enabled))
+
+    def context_idle_short_s(self) -> int:
+        return self._clamped_int(CONTEXT_IDLE_SHORT_KEY, 60, 10, 600)
+
+    def set_context_idle_short_s(self, seconds: int) -> None:
+        self._s.setValue(CONTEXT_IDLE_SHORT_KEY, int(seconds))
+
+    def context_idle_long_s(self) -> int:
+        return self._clamped_int(CONTEXT_IDLE_LONG_KEY, 300, 60, 3600)
+
+    def set_context_idle_long_s(self, seconds: int) -> None:
+        self._s.setValue(CONTEXT_IDLE_LONG_KEY, int(seconds))
+
+    def context_sample_s(self) -> int:
+        return self._clamped_int(CONTEXT_SAMPLE_KEY, 5, 2, 30)
+
+    def set_context_sample_s(self, seconds: int) -> None:
+        self._s.setValue(CONTEXT_SAMPLE_KEY, int(seconds))
+
+    def reset_context_settings(self) -> None:
+        for key in (CONTEXT_ENABLED_KEY, CONTEXT_ADAPTIVE_KEY, CONTEXT_QUIET_KEY,
+                    CONTEXT_IDLE_SHORT_KEY, CONTEXT_IDLE_LONG_KEY,
+                    CONTEXT_SAMPLE_KEY):
+            self._s.remove(key)
 
     def _bool(self, key: str, default: bool) -> bool:
         raw = self._s.value(key, default)

@@ -323,6 +323,110 @@ class ScratchpadDialog(QDialog):
         super().closeEvent(event)
 
 
+# ------------------------------------------------------- context & privacy ---
+
+class ContextDialog(QDialog):
+    """Transparent, plain-language controls for context awareness.
+
+    ``on_changed`` is called after any save so the app can refresh the
+    monitor, policy, and menus without a restart.
+    """
+
+    def __init__(self, settings, on_changed, parent=None) -> None:
+        super().__init__(parent)
+        self._settings = settings
+        self._on_changed = on_changed
+        self.setWindowTitle("Doodle — Context & privacy")
+        self.setMinimumWidth(380)
+        _style_popup(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(8)
+
+        intro = QLabel(
+            "Doodle can quiet down when you focus or step away. "
+            "It only ever reads <b>how many seconds</b> since your last "
+            "keyboard/mouse input (a Windows counter) — never what you typed, "
+            "clicked, or looked at. No keystrokes, screenshots, window "
+            "contents, or cursor paths are collected, and nothing leaves "
+            "this computer.")
+        intro.setWordWrap(True)
+        root.addWidget(intro)
+
+        self._chk_idle = QCheckBox("Detect when I'm away")
+        self._chk_idle.setStyleSheet(LBL)
+        root.addWidget(self._chk_idle)
+        idle_note = QLabel("Uses the Windows idle-time counter. Turn off to "
+                           "stop all away-detection.")
+        idle_note.setWordWrap(True)
+        root.addWidget(idle_note)
+
+        self._chk_adaptive = QCheckBox("Adapt personality to context")
+        self._chk_adaptive.setStyleSheet(LBL)
+        root.addWidget(self._chk_adaptive)
+        adapt_note = QLabel("Quiets Doodle during focus sessions and when "
+                            "you're away; ordinary behavior otherwise.")
+        adapt_note.setWordWrap(True)
+        root.addWidget(adapt_note)
+
+        self._chk_quiet = QCheckBox("Quiet mode")
+        self._chk_quiet.setStyleSheet(LBL)
+        root.addWidget(self._chk_quiet)
+        quiet_note = QLabel("Minimal animations, no wandering, no cursor "
+                            "reactions. Direct interaction still works.")
+        quiet_note.setWordWrap(True)
+        root.addWidget(quiet_note)
+
+        form = QFormLayout()
+        self._spin_short = QSpinBox()
+        self._spin_short.setRange(10, 600)
+        self._spin_short.setSuffix(" s")
+        self._spin_long = QSpinBox()
+        self._spin_long.setRange(60, 3600)
+        self._spin_long.setSuffix(" s")
+        form.addRow("Briefly away after", self._spin_short)
+        form.addRow("Away for a while after", self._spin_long)
+        root.addLayout(form)
+
+        row = QHBoxLayout()
+        reset = QPushButton("&Reset to defaults")
+        reset.clicked.connect(self._reset)
+        row.addWidget(reset)
+        row.addStretch(1)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._save)
+        buttons.rejected.connect(self.reject)
+        row.addWidget(buttons)
+        root.addLayout(row)
+        self._load()
+
+    def _load(self) -> None:
+        s = self._settings
+        self._chk_idle.setChecked(s.context_enabled())
+        self._chk_adaptive.setChecked(s.context_adaptive_personality())
+        self._chk_quiet.setChecked(s.context_quiet_mode())
+        self._spin_short.setValue(s.context_idle_short_s())
+        self._spin_long.setValue(s.context_idle_long_s())
+
+    def _save(self) -> None:
+        s = self._settings
+        short = min(self._spin_short.value(), self._spin_long.value() - 1)
+        s.set_context_enabled(self._chk_idle.isChecked())
+        s.set_context_adaptive_personality(self._chk_adaptive.isChecked())
+        s.set_context_quiet_mode(self._chk_quiet.isChecked())
+        s.set_context_idle_short_s(short)
+        s.set_context_idle_long_s(self._spin_long.value())
+        self._on_changed()
+        self.accept()
+
+    def _reset(self) -> None:
+        self._settings.reset_context_settings()
+        self._load()
+        self._on_changed()
+
+
 # ------------------------------------------------------------ notice popup ---
 
 class NoticePopup(QWidget):

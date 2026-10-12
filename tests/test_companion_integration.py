@@ -40,24 +40,33 @@ class FakeMover(QObject):
         self._active = False
 
 
-def make(bus, emitted, tmp_path, now):
+def make(bus, emitted, tmp_path, now, idle_s=0.0):
     from PySide6.QtCore import QSettings
+    from doodle_mvp.context.monitor import DesktopStateMonitor
+    from doodle_mvp.context.store import ContextStore
+    from doodle_mvp.platform.adapter import PlatformAdapter
     settings = AppSettings(QSettings(str(tmp_path / "s.ini"), QSettings.Format.IniFormat))
+    store = ContextStore(bus)
+    monitor = DesktopStateMonitor(
+        bus, store, settings, PlatformAdapter(),
+        idle_provider=lambda: idle_s)
     engine = BehaviorEngine(
         bus, rng=random.Random(0), mover=FakeMover(),
         get_pos=lambda: QPoint(500, 500),
     )
     engine.play_requested.connect(lambda n, l, f: emitted.append((n, l, f)))
+    monitor.start()
     engine.start()
+    store.republish()  # late subscriber: apply initial policy
     timer = FocusTimer(bus, settings, history_path=tmp_path / "hist.json",
                        clock=lambda: now[0])
     timer.start()
-    return engine, timer
+    return engine, timer, monitor, store
 
 
 def test_focus_started_calms_engine(qapp, tmp_path):
     bus, emitted, now = EventBus(), [], [0.0]
-    engine, timer = make(bus, emitted, tmp_path, now)
+    engine, timer, _monitor, _store = make(bus, emitted, tmp_path, now)
     timer.start_focus()
     assert engine.focus_mode is True
     calm = engine._scheduler.eligible(now=0.0)
@@ -69,7 +78,7 @@ def test_focus_started_calms_engine(qapp, tmp_path):
 
 def test_focus_completed_celebrates_and_uncalms(qapp, tmp_path):
     bus, emitted, now = EventBus(), [], [0.0]
-    engine, timer = make(bus, emitted, tmp_path, now)
+    engine, timer, _monitor, _store = make(bus, emitted, tmp_path, now)
     timer._settings.set_focus_minutes(1)
     timer.start_focus()
     now[0] += 61.0
@@ -82,7 +91,7 @@ def test_focus_completed_celebrates_and_uncalms(qapp, tmp_path):
 
 def test_reminder_due_reacts_subtly_during_focus(qapp, tmp_path):
     bus, emitted, now = EventBus(), [], [0.0]
-    engine, timer = make(bus, emitted, tmp_path, now)
+    engine, timer, _monitor, _store = make(bus, emitted, tmp_path, now)
     timer.start_focus()
     engine.on_animation_finished("happy")  # encouragement done -> back to idle
     emitted.clear()
@@ -94,7 +103,7 @@ def test_reminder_due_reacts_subtly_during_focus(qapp, tmp_path):
 
 def test_reminder_due_cheerful_outside_focus(qapp, tmp_path):
     bus, emitted, now = EventBus(), [], [0.0]
-    engine, timer = make(bus, emitted, tmp_path, now)
+    engine, timer, _monitor, _store = make(bus, emitted, tmp_path, now)
     bus.publish(E.REMINDER_DUE, {"id": "x", "title": "Stand up", "overdue": False})
     assert ("happy", False, 0) in emitted
     assert engine.focus_mode is False
@@ -102,7 +111,7 @@ def test_reminder_due_cheerful_outside_focus(qapp, tmp_path):
 
 def test_reminder_ignored_while_dragging(qapp, tmp_path):
     bus, emitted, now = EventBus(), [], [0.0]
-    engine, timer = make(bus, emitted, tmp_path, now)
+    engine, timer, _monitor, _store = make(bus, emitted, tmp_path, now)
     engine.handle_drag_start()
     bus.publish(E.REMINDER_DUE, {"id": "x", "title": "Hi", "overdue": False})
     assert emitted == [("idle", True, 0)] or not any(
@@ -124,8 +133,116 @@ def test_scheduler_shutdown_stops_polling(qapp, tmp_path):
 
 def test_focus_stopped_clears_calm(qapp, tmp_path):
     bus, emitted, now = EventBus(), [], [0.0]
-    engine, timer = make(bus, emitted, tmp_path, now)
+    engine, timer, _monitor, _store = make(bus, emitted, tmp_path, now)
     timer.start_focus()
     assert engine.focus_mode is True
     timer.stop()
     assert engine.focus_mode is False
+
+
+# ------------------------------------------------------------------ Phase 4 ---
+
+def test_idle_long_puts_engine_to_rest(qapp, tmp_path):
+    from doodle_mvp.context.policy import ActivityLevel
+    bus, emitted, now = EventBus(), [], [0.0]
+    engine, timer, monitor, store = make(bus, emitted, tmp_path, now,
+                                        idle_s=400.0)
+    assert engine.activity_level == ActivityLevel.REST
+    eligible = engine._scheduler.eligible(now=0.0)
+    assert set(eligible) <= {"blink", "sleepy"}
+    assert "wander" not in eligible
+
+
+def test_quiet_mode_suppresses_cursor_reactions(qapp, tmp_path):
+    from doodle_mvp.context.policy import ActivityLevel
+    bus, emitted, now = EventBus(), [], [0.0]
+    engine, timer, monitor, store = make(bus, emitted, tmp_path, now)
+    engine._settings_quiet = True
+    timer._settings.set_context_quiet_mode(True)
+    monitor.refresh_from_settings()
+    assert engine.activity_level == ActivityLevel.QUIET
+    before = list(emitted)
+    bus.publish(E.CURSOR_NEAR, {"side": "right"})
+    assert emitted == before  # suppressed
+    # Direct poke still answered: responsiveness wins over quiet.
+    bus.publish(E.POKE, {})
+    assert any(n == "playful" for n, _, _ in emitted)
+
+
+def test_adaptive_off_keeps_ordinary_behavior(qapp, tmp_path):
+    from doodle_mvp.context.policy import ActivityLevel
+    bus, emitted, now = EventBus(), [], [0.0]
+    engine, timer, monitor, store = make(bus, emitted, tmp_path, now,
+                                        idle_s=400.0)
+    timer._settings.set_context_adaptive_personality(False)
+    engine.set_adaptive_personality(False)
+    store.republish()  # re-apply policy immediately, like the app does
+    assert engine.activity_level == ActivityLevel.NORMAL
+
+
+def test_direct_interaction_overrides_focus_calm(qapp, tmp_path):
+    from doodle_mvp.context.policy import ActivityLevel
+    bus, emitted, now = EventBus(), [], [0.0]
+    engine, timer, monitor, store = make(bus, emitted, tmp_path, now)
+    timer.start_focus()
+    assert engine.activity_level == ActivityLevel.CALM
+    engine.on_animation_finished("happy")
+    bus.publish(E.DRAG_START, {})
+    assert engine.activity_level == ActivityLevel.NORMAL
+    bus.publish(E.DRAG_END, {"distance_px": 1.0, "duration_s": 0.1,
+                             "velocity_px_s": 0.0, "dx": 0.0, "dy": 0.0})
+    engine.on_animation_finished("idle")
+    assert engine.activity_level == ActivityLevel.CALM  # focus resumes
+
+
+def test_no_repeated_reactions_on_resample(qapp, tmp_path):
+    bus, emitted, now = EventBus(), [], [0.0]
+    engine, timer, monitor, store = make(bus, emitted, tmp_path, now)
+    timer.start_focus()
+    engine.on_animation_finished("happy")
+    count = len(emitted)
+    monitor.sample()  # same context again
+    monitor.sample()
+    assert len(emitted) == count  # no replayed encouragement
+
+
+def test_break_completed_blinks_once(qapp, tmp_path):
+    bus, emitted, now = EventBus(), [], [0.0]
+    engine, timer, monitor, store = make(bus, emitted, tmp_path, now)
+    timer._settings.set_focus_minutes(1)
+    timer._settings.set_break_minutes(1)
+    timer.start_focus()
+    engine.on_animation_finished("happy")
+    emitted.clear()
+    now[0] += 61.0
+    timer.poll()   # focus -> break: celebration
+    engine.on_animation_finished("happy")
+    emitted.clear()
+    now[0] += 61.0
+    timer.poll()   # break -> none: gentle blink
+    assert ("blink", False, 0) in emitted
+    engine.on_animation_finished("blink")
+    assert engine._state == IDLE
+
+
+def test_context_dialog_saves_settings(qapp, tmp_path):
+    from PySide6.QtCore import QSettings
+    from doodle_mvp.companion.dialogs import ContextDialog
+    from doodle_mvp.persistence.settings import AppSettings
+    settings = AppSettings(
+        QSettings(str(tmp_path / "s.ini"), QSettings.Format.IniFormat))
+    changed = []
+    dlg = ContextDialog(settings, lambda: changed.append(1))
+    dlg._chk_idle.setChecked(False)
+    dlg._chk_quiet.setChecked(True)
+    dlg._spin_short.setValue(45)
+    dlg._spin_long.setValue(200)
+    dlg._save()
+    assert settings.context_enabled() is False
+    assert settings.context_quiet_mode() is True
+    assert settings.context_idle_short_s() == 45
+    assert settings.context_idle_long_s() == 200
+    assert changed == [1]
+    dlg._reset()
+    assert settings.context_enabled() is True
+    assert settings.context_quiet_mode() is False

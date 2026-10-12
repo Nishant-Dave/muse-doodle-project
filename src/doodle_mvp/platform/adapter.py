@@ -24,6 +24,10 @@ class PlatformAdapter:
     def supports_transparency(self) -> bool:
         return True
 
+    def system_idle_seconds(self) -> float | None:
+        """Seconds since last user input; None when unavailable."""
+        return None
+
     def configure_companion_window(self, window: QWidget) -> None:
         """Apply window flags/attributes for a floating companion window."""
         window.setWindowFlags(
@@ -60,6 +64,30 @@ class WindowsPlatformAdapter(PlatformAdapter):
         # Qt flags already give us frameless + top-most + tool window on
         # Windows. The ctypes handle is kept for future needs (e.g. click-
         # through regions) without letting Win32 calls leak into UI code.
+
+    def system_idle_seconds(self) -> float | None:
+        """Seconds since last input via GetLastInputInfo; None if unavailable."""
+        if self._user32 is None:
+            return None
+        try:
+            import ctypes
+
+            class LASTINPUTINFO(ctypes.Structure):
+                _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+            info = LASTINPUTINFO()
+            info.cbSize = ctypes.sizeof(info)
+            if not self._user32.GetLastInputInfo(ctypes.byref(info)):
+                return None
+            # GetTickCount64 avoids the 49-day wrap of GetTickCount.
+            try:
+                now_ms = self._user32.GetTickCount64()
+            except AttributeError:
+                now_ms = self._user32.GetTickCount()
+            return max(0.0, (now_ms - info.dwTime) / 1000.0)
+        except Exception as exc:  # never let idle detection crash the app
+            log.warning("GetLastInputInfo failed: %s", exc)
+            return None
 
 
 class PosixPlatformAdapter(PlatformAdapter):

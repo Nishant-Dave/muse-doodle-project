@@ -27,6 +27,7 @@ from ..character.animation import AnimationPlayer
 from ..character.assets import AssetLoader
 from ..character.character import PandaCharacter
 from ..companion.dialogs import (
+    ContextDialog,
     FocusPanel,
     NoticePopup,
     ReminderDialog,
@@ -35,6 +36,8 @@ from ..companion.dialogs import (
 )
 from ..companion.focus import FocusTimer
 from ..companion.reminders import ReminderScheduler, ReminderStore
+from ..context.monitor import DesktopStateMonitor
+from ..context.store import ContextStore
 from ..desktop import positioning
 from ..desktop.companion_window import CompanionWindow
 from ..desktop.cursor_monitor import CursorMonitor
@@ -99,6 +102,14 @@ class DoodleApplication:
         self.notice_popup.closed.connect(self._show_next_notice)
         self._notice_queue: list[dict] = []
 
+        # Phase 4: context awareness (transient, in-memory; nothing tracked).
+        self.context_store = ContextStore(self.bus)
+        self.context_monitor = DesktopStateMonitor(
+            self.bus, self.context_store, self.settings, self.adapter)
+        self.engine.set_adaptive_personality(
+            self.settings.context_adaptive_personality())
+        self.context_dialog = ContextDialog(self.settings, self._refresh_context)
+
         icon = self._tray_icon()
         self.tray = TrayController(
             icon,
@@ -106,6 +117,7 @@ class DoodleApplication:
             momentum_enabled=self.settings.momentum_enabled(),
             wander_enabled=self.settings.wander_enabled(),
         )
+        self.tray.set_quiet_mode(self.settings.context_quiet_mode())
 
         self._wire()
         self._shutdown_done = False
@@ -126,6 +138,8 @@ class DoodleApplication:
         self.window.request_reminder_list.connect(self._show_reminder_list)
         self.window.request_scratchpad.connect(self._show_scratchpad)
         self.window.set_focus_state_provider(self._focus_state)
+        self.window.request_context_dialog.connect(self._show_context_dialog)
+        self.bus.subscribe(E.QUIET_TOGGLED, self._apply_quiet_toggled)
 
         self.tray.request_show_hide.connect(self._toggle_visible)
         self.tray.request_mood_popup.connect(lambda: self.popup.show_near(self.window))
@@ -135,6 +149,9 @@ class DoodleApplication:
         self.tray.request_reminder_list.connect(self._show_reminder_list)
         self.tray.request_scratchpad.connect(self._show_scratchpad)
         self.tray.set_focus_state_provider(self._focus_state)
+        self.tray.request_context_dialog.connect(self._show_context_dialog)
+        self.tray.quiet_toggled.connect(
+            lambda enabled: self._apply_quiet_toggled({"enabled": enabled}))
         self.tray.focus_control.connect(
             lambda action: self.bus.publish(E.FOCUS_CONTROL, {"action": action})
         )
@@ -171,8 +188,10 @@ class DoodleApplication:
             self.bus.subscribe(ev, lambda _p: self._reset_tray_tooltip())
         self.focus_timer.start()
         self.reminder_scheduler.start()
+        self.context_monitor.start()
 
         self.engine.start()
+        self.context_store.republish()  # late subscriber: apply initial policy
         if not self.settings.animations_enabled():
             # Go through the real event path so startup == toggle behavior.
             self.bus.publish(E.ANIMATIONS_TOGGLED, {"enabled": False})
@@ -216,7 +235,8 @@ class DoodleApplication:
         self.tray.shutdown()
         self.popup.close()
         for dialog in (self.focus_panel, self.reminder_list_dialog,
-                       self.scratchpad_dialog, self.notice_popup):
+                       self.scratchpad_dialog, self.notice_popup,
+                       self.context_dialog):
             try:
                 dialog.close()
             except Exception:  # noqa: BLE001
@@ -290,6 +310,27 @@ class DoodleApplication:
         self.scratchpad_dialog.show()
         self.scratchpad_dialog.raise_()
         self.scratchpad_dialog.activateWindow()
+
+    # -- Phase 4: context slots -------------------------------------------------------
+
+    def _show_context_dialog(self) -> None:
+        self.context_dialog.show()
+        self.context_dialog.raise_()
+        self.context_dialog.activateWindow()
+
+    def _apply_quiet_toggled(self, payload: dict) -> None:
+        self.settings.set_context_quiet_mode(bool(payload.get("enabled", False)))
+        self._refresh_context()
+
+    def _refresh_context(self) -> None:
+        """Apply context settings without a restart."""
+        self.context_monitor.refresh_from_settings()
+        self.engine.set_adaptive_personality(
+            self.settings.context_adaptive_personality())
+        quiet = self.settings.context_quiet_mode()
+        self.window.set_quiet_mode(quiet)
+        self.tray.set_quiet_mode(quiet)
+        self.context_store.republish()  # re-apply policy immediately
 
     def _on_reminder_due(self, payload: dict) -> None:
         self._notice_queue.append(payload)

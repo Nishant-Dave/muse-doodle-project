@@ -24,6 +24,8 @@ class TrayController(QObject):
     request_reminder_dialog = Signal()
     request_reminder_list = Signal()
     request_scratchpad = Signal()
+    request_context_dialog = Signal()
+    quiet_toggled = Signal(bool)
     focus_control = Signal(str)  # start|pause|resume|stop|skip
 
     def __init__(
@@ -39,6 +41,7 @@ class TrayController(QObject):
         self._animations_enabled = animations_enabled
         self._momentum_enabled = momentum_enabled
         self._wander_enabled = wander_enabled
+        self._quiet_mode = False
         self._focus_state_provider = None
         self._menu: QMenu | None = None
         self._anim_action: QAction | None = None
@@ -89,6 +92,9 @@ class TrayController(QObject):
         self._wander_enabled = enabled
         if self._wander_action is not None:
             self._wander_action.setChecked(enabled)
+
+    def set_quiet_mode(self, enabled: bool) -> None:
+        self._quiet_mode = enabled
 
     def set_tooltip(self, text: str) -> None:
         if self._tray is not None:
@@ -154,6 +160,14 @@ class TrayController(QObject):
         scratch = QAction("&Scratchpad…", menu)
         scratch.triggered.connect(self.request_scratchpad.emit)
         menu.addAction(scratch)
+        quiet = QAction("&Quiet mode", menu)
+        quiet.setCheckable(True)
+        quiet.setChecked(self._quiet_mode)
+        quiet.triggered.connect(lambda checked: self.quiet_toggled.emit(checked))
+        menu.addAction(quiet)
+        ctx = QAction("Context &privacy…", menu)
+        ctx.triggered.connect(self.request_context_dialog.emit)
+        menu.addAction(ctx)
 
         menu.addSeparator()
         self._anim_action = QAction("Animations", menu)

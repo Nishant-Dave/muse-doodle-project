@@ -99,3 +99,8 @@ REMINDER_CREATED = "reminder_created"  # payload: {id: str, title: str}
 REMINDER_DUE = "reminder_due"          # payload: {id: str, title: str, overdue: bool}
 REMINDER_DISMISSED = "reminder_dismissed"  # payload: {id: str}
 REMINDER_DELETED = "reminder_deleted"  # payload: {id: str}
+# -- Phase 4: context awareness --------------------------------------------------
+CONTEXT_CHANGED = "context_changed"    # payload: {current: {...}, previous: {...}}
+MENU_OPENED = "menu_opened"            # payload: {}
+MENU_CLOSED = "menu_closed"            # payload: {}
+QUIET_TOGGLED = "quiet_toggled"        # payload: {enabled: bool}
