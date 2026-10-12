@@ -43,6 +43,7 @@ class CompanionWindow(QWidget):
     request_reminder_dialog = Signal()
     request_reminder_list = Signal()
     request_scratchpad = Signal()
+    request_context_dialog = Signal()
 
     def __init__(
         self,
@@ -72,6 +73,7 @@ class CompanionWindow(QWidget):
         self._animations_enabled = settings.animations_enabled()
         self._momentum_enabled = settings.momentum_enabled()
         self._wander_enabled = settings.wander_enabled()
+        self._quiet_mode = settings.context_quiet_mode()
         self._focus_state_provider = None  # () -> (state, kind); set by app
 
     # -- public ---------------------------------------------------------------
@@ -91,6 +93,9 @@ class CompanionWindow(QWidget):
 
     def set_wander_enabled(self, enabled: bool) -> None:
         self._wander_enabled = enabled
+
+    def set_quiet_mode(self, enabled: bool) -> None:
+        self._quiet_mode = enabled
 
     def set_focus_state_provider(self, provider) -> None:
         """Provider returning (state, kind) for contextual focus menu items."""
@@ -233,6 +238,9 @@ class CompanionWindow(QWidget):
         quit_action.triggered.connect(self.request_quit.emit)
         menu.addAction(quit_action)
 
+        self._bus.publish(E.MENU_OPENED, {})
+        menu.aboutToHide.connect(
+            lambda: self._bus.publish(E.MENU_CLOSED, {}))
         menu.popup(global_pos)
 
     def _add_focus_items(self, menu: QMenu) -> None:
@@ -284,6 +292,16 @@ class CompanionWindow(QWidget):
         scratch = QAction("&Scratchpad…", menu)
         scratch.triggered.connect(self.request_scratchpad.emit)
         menu.addAction(scratch)
+        quiet = QAction("&Quiet mode", menu)
+        quiet.setCheckable(True)
+        quiet.setChecked(self._quiet_mode)
+        quiet.setToolTip("Minimal animations, no wandering, no cursor reactions")
+        quiet.triggered.connect(
+            lambda checked: self._bus.publish(E.QUIET_TOGGLED, {"enabled": checked}))
+        menu.addAction(quiet)
+        ctx = QAction("Context &privacy…", menu)
+        ctx.triggered.connect(self.request_context_dialog.emit)
+        menu.addAction(ctx)
 
     def _on_come_here(self) -> None:
         from PySide6.QtGui import QCursor

@@ -107,8 +107,11 @@ Covers: asset loading + frame differences, animation frame progression and
 the single-timer invariant, behavior priorities and transitions, mood state
 and popup, preferences defaults/round-trips/invalid values, app
 lifecycle/shutdown, focus timer states/transitions/history (fake clock),
-reminder CRUD/due/overdue/duplicate-prevention/persistence, and
-focus+reminder integration with the behavior engine.
+reminder CRUD/due/overdue/duplicate-prevention/persistence,
+focus+reminder integration with the behavior engine, context model/store
+transitions, idle classifier thresholds + hysteresis, personality policy
+precedence, desktop monitor lifecycle (mocked idle provider), and
+context→policy→engine integration.
 
 ## Using Doodle
 
@@ -142,6 +145,11 @@ focus+reminder integration with the behavior engine.
   Dismiss or delete from the list. Stored locally on your PC.
 - **Scratchpad** (right-click → **Scratchpad…**): a quick note that saves
   itself automatically on this computer.
+- **Context awareness** (right-click → **Context & privacy…**): Doodle
+  notices when you step away (Windows idle counter only — never what you
+  type or click) and quiets down during focus sessions or long idle
+  stretches. **Quiet mode** (also a menu toggle) minimizes everything.
+  All of it can be turned off; ordinary behavior resumes immediately.
 
 ## Architecture
 
@@ -260,6 +268,43 @@ headless, so they are **NOT VERIFIED** (not claimed).
 15. Exit and confirm clean shutdown — **PASS** (timers stopped, dialogs
     closed, bus cleared).
 
+### Phase 4 acceptance
+
+1. Start Doodle with context awareness enabled — **PASS** (automated:
+   offscreen app starts the single 5s sampler; real idle API **NOT
+   VERIFIED** on Windows).
+2. Interact normally with the desktop — **PASS** (idle < threshold →
+   ACTIVE → normal personality; feel **NOT VERIFIED**).
+3. Leave the computer idle briefly — **PASS** (fake idle provider:
+   IDLE_SHORT → calm profile, no wandering).
+4. Leave it idle for a longer configured interval — **PASS**
+   (IDLE_LONG → rest profile: blink/sleepy only, 4× cadence).
+5. Resume desktop activity and observe the transition — **PASS**
+   (hysteresis prevents flapping; re-classifies ACTIVE).
+6. Start a focus session and verify calmer behavior — **PASS** (CALM
+   via context pipeline, encouragement reaction once).
+7. Pause or finish the focus session and verify recovery — **PASS**
+   (policy re-applied, celebration on completion).
+8. Start a break and observe the appropriate behavior — **PASS**
+   (ON_BREAK → normal/relaxed, gentle blink when the break ends).
+9. Drag Doodle while a context transition occurs — **PASS** (drag
+   priority untouched; policy never interrupts DRAGGING).
+10. Enable quiet mode — **PASS** (QUIET: rest profile + no cursor
+    reactions; poke/drag still answered).
+11. Disable context awareness and verify ordinary behavior resumes —
+    **PASS** (sampler stops, desktop → UNKNOWN → normal; no restart).
+12. Restart the application and verify settings persist — **PASS**
+    (QSettings round-trip).
+13. Leave the application running for an extended period — sampler
+    lifecycle **PASS**; long-run CPU **NOT VERIFIED** (one 6.4µs
+    sample per 5s measured headless).
+14. Confirm no repeated notifications, animation loops, or excessive
+    wandering occur — **PASS** (transitions emit only on change;
+    reactions fire once per transition).
+15. Verify that no screenshots, keystrokes, browser content, or
+    unrelated user activity are collected — **PASS** by construction
+    (only idle-seconds counter read; code-inspected, no such APIs).
+
 ### General (visual, needs Windows)
 
 - [ ] Transparency: no rectangle/halo around the artwork.
@@ -291,6 +336,15 @@ headless, so they are **NOT VERIFIED** (not claimed).
   in-app notice popups; calm behavior profile during focus sessions
   (restricted scheduler weights, doubled idle cadence, no wandering);
   menu/tray integration with contextual focus controls.
+- Phase 4 context awareness (all local, in-memory only): unified context
+  model (desktop/focus/interaction/quiet as orthogonal dimensions),
+  desktop state monitor with a single 5s sampler (Windows idle seconds via
+  ctypes GetLastInputInfo, no pywin32; graceful UNKNOWN fallback),
+  hysteresis classifier with configurable thresholds, deterministic
+  personality policy (direct interaction > quiet > focus > break > idle),
+  activity levels (normal/calm/rest/quiet) driving scheduler weights and
+  idle cadence, Context & privacy dialog with plain-language explanations,
+  quiet-mode menu toggles. **162/162 tests pass** (138 baseline + 24 new).
 - Implemented, needs manual visual verification: everything marked
   NOT VERIFIED in the checklist above — transparency, always-on-top feel,
   motion smoothness/feel, tray on Windows. New artwork (walk strip, land

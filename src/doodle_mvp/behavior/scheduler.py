@@ -50,6 +50,14 @@ COOLDOWNS: dict[str, float] = {
 CALM_ACTIVITIES = frozenset(
     {"blink", "curious", "yawn", "sleepy", "gaze_left", "gaze_right"}
 )
+# Rest/quiet profile: barely-there presence.
+REST_ACTIVITIES = frozenset({"blink", "sleepy"})
+
+# Activity levels driven by the personality policy (Phase 4).
+LEVEL_NORMAL = "normal"
+LEVEL_CALM = "calm"
+LEVEL_REST = "rest"
+LEVEL_QUIET = "quiet"
 
 HISTORY_LEN = 3
 IDLE_CHANCE = 0.18  # probability of "do nothing" on a given pick
@@ -69,15 +77,25 @@ class PersonalityScheduler:
         self._cooldowns = dict(cooldowns) if cooldowns else dict(COOLDOWNS)
         self._history: list[str] = []
         self._last_run: dict[str, float] = {}
-        self._calm = False
+        self._level = LEVEL_NORMAL
 
     @property
     def history(self) -> list[str]:
         return list(self._history)
 
+    @property
+    def level(self) -> str:
+        return self._level
+
+    def set_level(self, level: str) -> None:
+        """Activity level from the personality policy."""
+        if level not in (LEVEL_NORMAL, LEVEL_CALM, LEVEL_REST, LEVEL_QUIET):
+            raise ValueError(f"Unknown activity level: {level!r}")
+        self._level = level
+
     def set_calm(self, calm: bool) -> None:
-        """Focus-mode profile: restrict to calm activities."""
-        self._calm = calm
+        """Legacy shim (Phase 3 API)."""
+        self.set_level(LEVEL_CALM if calm else LEVEL_NORMAL)
 
     def record(self, activity: str) -> None:
         """Mark an activity as performed (also used for user-triggered ones)."""
@@ -90,9 +108,15 @@ class PersonalityScheduler:
         """Activities allowed right now (history + cooldown filtered)."""
         now = self._clock() if now is None else now
         recent = set(self._history[-2:])
+        if self._level in (LEVEL_REST, LEVEL_QUIET):
+            allowed = REST_ACTIVITIES
+        elif self._level == LEVEL_CALM:
+            allowed = CALM_ACTIVITIES
+        else:
+            allowed = None
         out = []
         for name in self._weights:
-            if self._calm and name not in CALM_ACTIVITIES:
+            if allowed is not None and name not in allowed:
                 continue
             if name in recent:
                 continue

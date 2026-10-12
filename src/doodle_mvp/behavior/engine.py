@@ -24,9 +24,37 @@ import time
 from PySide6.QtCore import QObject, QPoint, QTimer, Signal
 
 from . import events as E
-from .scheduler import PersonalityScheduler
+from .scheduler import (
+    LEVEL_CALM,
+    LEVEL_NORMAL,
+    LEVEL_QUIET,
+    LEVEL_REST,
+    PersonalityScheduler,
+)
+from ..context.model import (
+    ContextSnapshot,
+    DesktopActivity,
+    DoodleInteraction,
+    FocusPhase,
+)
+from ..context.policy import ActivityLevel, PersonalityPolicy
 
 log = logging.getLogger(__name__)
+
+_SCHEDULER_LEVELS = {
+    ActivityLevel.NORMAL: LEVEL_NORMAL,
+    ActivityLevel.CALM: LEVEL_CALM,
+    ActivityLevel.REST: LEVEL_REST,
+    ActivityLevel.QUIET: LEVEL_QUIET,
+}
+
+# Idle-cadence multiplier per activity level (engine schedule timer).
+_LEVEL_CADENCE = {
+    ActivityLevel.NORMAL: 1.0,
+    ActivityLevel.CALM: 2.0,
+    ActivityLevel.REST: 4.0,
+    ActivityLevel.QUIET: 4.0,
+}
 
 IDLE = "idle"
 DRAGGING = "dragging"
@@ -79,6 +107,7 @@ class BehaviorEngine(QObject):
         mover=None,
         monitor=None,
         get_pos=None,
+        policy: PersonalityPolicy | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -88,11 +117,13 @@ class BehaviorEngine(QObject):
         self._mover = mover
         self._monitor = monitor
         self._get_pos = get_pos
+        self._policy = policy or PersonalityPolicy()
+        self._level = ActivityLevel.NORMAL
+        self._focus_phase = FocusPhase.NONE
         self._state = IDLE
         self._enabled = True
         self._momentum_enabled = True
         self._wander_enabled = True
-        self._focus_mode = False
         self._facing = "right"
         self._last_played: tuple[str, bool] | None = None
         self._schedule_timer = QTimer(self)
@@ -123,12 +154,9 @@ class BehaviorEngine(QObject):
         bus.subscribe(E.CURSOR_DWELL, self.handle_cursor_dwell)
         bus.subscribe(E.COME_HERE, self.handle_come_here)
         bus.subscribe(E.WANDER_NOW, self.handle_wander_now)
-        # Phase 3: companion features.
-        bus.subscribe(E.FOCUS_STARTED, self.handle_focus_started)
-        bus.subscribe(E.FOCUS_COMPLETED, self.handle_focus_completed)
-        bus.subscribe(E.BREAK_STARTED, self.handle_break_started)
-        bus.subscribe(E.BREAK_COMPLETED, self.handle_break_completed)
-        bus.subscribe(E.FOCUS_STOPPED, self.handle_focus_stopped)
+        # Phase 4: context-driven personality. The context monitor mirrors
+        # focus-timer events into the store; the engine only listens here.
+        bus.subscribe(E.CONTEXT_CHANGED, self.handle_context_changed)
         bus.subscribe(E.REMINDER_DUE, self.handle_reminder_due)
         bus.subscribe(E.ANIMATIONS_TOGGLED, self.handle_animations_toggled)
         bus.subscribe(E.MOMENTUM_TOGGLED, self.handle_momentum_toggled)
@@ -199,6 +227,8 @@ class BehaviorEngine(QObject):
     def handle_cursor_near(self, payload: dict) -> None:
         if not self._enabled or self._state != IDLE:
             return
+        if self._level == ActivityLevel.QUIET:
+            return  # quiet mode: no unsolicited cursor reactions
         side = str(payload.get("side", "right"))
         # The artwork is mirrored when facing left, so flip the gaze
         # direction to keep looking at the physical cursor position.
@@ -246,16 +276,57 @@ class BehaviorEngine(QObject):
         if self._wander_enabled:
             self._start_wander()
 
-    # -- Phase 3: companion integration ------------------------------------------
+    # -- Phase 4: context-driven personality ---------------------------------------
+
+    @property
+    def activity_level(self) -> ActivityLevel:
+        return self._level
 
     @property
     def focus_mode(self) -> bool:
-        return self._focus_mode
+        """True while a focus session is active (Phase 3 API)."""
+        return self._focus_phase in (FocusPhase.FOCUSING, FocusPhase.FOCUS_PAUSED)
 
-    def set_focus_mode(self, enabled: bool) -> None:
-        """Calmer personality during focus sessions; direct control unaffected."""
-        self._focus_mode = enabled
-        self._scheduler.set_calm(enabled)
+    def handle_context_changed(self, payload: dict) -> None:
+        current = payload.get("current", {})
+        previous = payload.get("previous", {})
+        try:
+            cur_focus = FocusPhase(current.get("focus", "none"))
+            prev_focus = FocusPhase(previous.get("focus", "none"))
+        except ValueError:
+            return
+        self._focus_phase = cur_focus
+        self._apply_policy(current)
+        if not self._enabled:
+            return
+        # One-shot transition reactions; never replayed on re-samples.
+        if cur_focus != prev_focus:
+            if cur_focus == FocusPhase.FOCUSING:
+                self._user_reaction("happy")  # brief encouragement, then calm
+            elif (prev_focus == FocusPhase.FOCUSING
+                    and cur_focus == FocusPhase.ON_BREAK):
+                self._user_reaction("happy")  # celebration
+            elif (prev_focus == FocusPhase.ON_BREAK
+                    and cur_focus == FocusPhase.NONE):
+                self._user_reaction("blink")
+
+    def _apply_policy(self, summary: dict) -> None:
+        snapshot = ContextSnapshot(
+            desktop=DesktopActivity(summary.get("desktop", "unknown")),
+            focus=FocusPhase(summary.get("focus", "none")),
+            interaction=DoodleInteraction(summary.get("interaction", "none")),
+            quiet=bool(summary.get("quiet", False)),
+            idle_detection_enabled=bool(
+                summary.get("idle_detection_enabled", True)),
+        )
+        decision = self._policy.decide(snapshot)
+        self._level = decision.level
+        self._scheduler.set_level(_SCHEDULER_LEVELS[decision.level])
+        log.debug("Personality policy: %s (%s)", decision.level.value,
+                  decision.reason)
+
+    def set_adaptive_personality(self, adaptive: bool) -> None:
+        self._policy.adaptive = adaptive
 
     def _user_reaction(self, animation: str) -> None:
         """User-triggered one-shot: never during drag, never stacked."""
@@ -264,36 +335,12 @@ class BehaviorEngine(QObject):
         self._cancel_movement()
         self._react(animation)
 
-    def handle_focus_started(self, payload: dict) -> None:
-        if not self._enabled:
-            return
-        self.set_focus_mode(True)
-        self._user_reaction("happy")  # brief encouragement, then calm
-
-    def handle_focus_completed(self, payload: dict) -> None:
-        if not self._enabled:
-            return
-        self.set_focus_mode(False)
-        self._user_reaction("happy")  # celebration
-
-    def handle_break_started(self, payload: dict) -> None:
-        if not self._enabled:
-            return
-        self.set_focus_mode(False)  # break: normal personality resumes
-
-    def handle_break_completed(self, payload: dict) -> None:
-        if not self._enabled:
-            return
-        self._user_reaction("blink")
-
-    def handle_focus_stopped(self, payload: dict) -> None:
-        self.set_focus_mode(False)
-
     def handle_reminder_due(self, payload: dict) -> None:
         if not self._enabled:
             return
-        # Subtle during focus, cheerful otherwise; always returns to idle.
-        self._user_reaction("blink" if self._focus_mode else "happy")
+        # Subtle when calm, cheerful otherwise; always returns to idle.
+        self._user_reaction(
+            "blink" if self._level != ActivityLevel.NORMAL else "happy")
 
     def handle_mood(self, payload: dict) -> None:
         if not self._enabled:
@@ -395,9 +442,8 @@ class BehaviorEngine(QObject):
     def _schedule_next(self, lo: float = SCHEDULE_MIN_S, hi: float = SCHEDULE_MAX_S) -> None:
         if not self._enabled:
             return
-        if self._focus_mode:
-            lo, hi = lo * 2.0, hi * 2.0  # calmer cadence during focus
-        delay_ms = int(self._rng.uniform(lo, hi) * 1000)
+        cadence = _LEVEL_CADENCE[self._level]
+        delay_ms = int(self._rng.uniform(lo * cadence, hi * cadence) * 1000)
         self._schedule_timer.start(delay_ms)
 
     def _cancel_movement(self) -> None:
