@@ -77,6 +77,9 @@ class Pose:
     squash: float = 0.0          # 0..1 vertical compression (landing)
     gaze_dx: int = 0             # eye/pupil shift, master px (look direction)
     gaze_dy: int = 0
+    # -- Living character: profile walk view ---
+    profile: bool = False        # side view (walk cycle); step_phase = radians
+    stretch_arms: bool = False   # both arms raised (stretching)
 
 
 # ------------------------------------------------------------------ helpers ---
@@ -492,6 +495,115 @@ def _wave_arm() -> Image.Image:
     return L
 
 
+def _raised_arms() -> Image.Image:
+    """Both arms raised high for the morning stretch."""
+    L = _new()
+    _ellipse(L, 200, 430, 56, 140, BLACK_FUR, rotation=-24)
+    _ellipse(L, 760, 430, 56, 140, BLACK_FUR, rotation=24)
+    d = ImageDraw.Draw(L)
+    d.ellipse([148, 300, 200, 344], fill=BLACK_DEEP)
+    d.ellipse([760, 300, 812, 344], fill=BLACK_DEEP)
+    return L
+
+
+# ------------------------------------------------- profile walk rendering ---
+
+def _profile_leg(hip_x: int, hip_y: int, angle_deg: float, lift: float,
+                 fill) -> tuple[Image.Image, tuple[float, float]]:
+    """One swinging leg: capsule rotated about the hip + flat foot at ankle."""
+    layer = _new()
+    d = ImageDraw.Draw(layer)
+    w, length = 64, 132
+    d.rounded_rectangle([hip_x - w / 2, hip_y - 12, hip_x + w / 2, hip_y + length],
+                        radius=w / 2, fill=fill)
+    layer = layer.rotate(-angle_deg, resample=Image.BICUBIC,
+                         center=(hip_x, hip_y))
+    a = math.radians(angle_deg)
+    ax = hip_x + math.sin(a) * length
+    ay = hip_y + math.cos(a) * length - lift
+    return layer, (ax, ay)
+
+
+def _render_body_profile(pose: Pose) -> Image.Image:
+    """Side view (facing right): waddling walk with swinging legs."""
+    p = pose.step_phase  # radians around the stride cycle
+    L = _new()
+    # tail puff
+    _ellipse(L, 296, 688, 44, 44, WHITE_FUR)
+    # back leg (far side, darker): antiphase swing
+    a_back = 30.0 * math.sin(p + math.pi)
+    lift_back = max(0.0, math.cos(p + math.pi)) * 42.0
+    leg, (ax, ay) = _profile_leg(428, 806, a_back, lift_back, BLACK_DEEP)
+    L.alpha_composite(leg)
+    _ellipse(L, ax, ay + 4, 102, 54, BLACK_DEEP)
+    # torso
+    _ellipse(L, 480, 686, 208, 186, WHITE_FUR)
+    _ellipse(L, 418, 586, 152, 118, BLACK_FUR, rotation=-12)  # saddle
+    _ellipse(L, 452, 560, 60, 40, BLACK_HI[:3] + (90,), rotation=-12)
+    # front leg (near side)
+    a_front = 30.0 * math.sin(p)
+    lift_front = max(0.0, math.cos(p)) * 42.0
+    leg2, (ax2, ay2) = _profile_leg(546, 812, a_front, lift_front, BLACK_FUR)
+    L.alpha_composite(leg2)
+    _ellipse(L, ax2, ay2 + 4, 106, 56, BLACK_FUR)
+    _ellipse(L, ax2 - 20, ay2 - 10, 34, 18, BLACK_HI[:3] + (110,))
+    # front arm swings opposite the legs
+    _ellipse(L, 598, 688, 52, 104, BLACK_FUR, rotation=-16 * math.sin(p))
+    return L
+
+
+def _profile_shading() -> Image.Image:
+    shade = _new()
+    d = ImageDraw.Draw(shade)
+    d.ellipse([220, 380, 560, 760], fill=(255, 255, 255, 28))
+    d.ellipse([480, 640, 880, 960], fill=(40, 30, 40, 40))
+    shade = _soft(shade, 48)
+    mask = _new()
+    dm = ImageDraw.Draw(mask)
+    dm.ellipse([480 - 210, 686 - 188, 480 + 210, 686 + 188], fill=(255, 255, 255, 255))
+    out = _new()
+    out.alpha_composite(Image.composite(shade, _new(), mask))
+    return out
+
+
+def _render_head_profile(pose: Pose) -> Image.Image:
+    """Side-view head (facing right) carrying the same identity markers."""
+    L = _new()
+    d = ImageDraw.Draw(L)
+    # ear
+    _ellipse(L, 582, 332, 84, 84, BLACK_FUR)
+    _ellipse(L, 582, 338, 44, 44, BLACK_DEEP)
+    # head ball
+    _ellipse(L, 656, 470, 150, 148, WHITE_FUR)
+    # crown tuft (three strokes)
+    for x0, y0, x1, y1 in ((616, 332, 606, 290), (642, 326, 642, 282),
+                           (668, 332, 678, 292)):
+        d.line([(x0, y0), (x1, y1)], fill=(214, 208, 198, 255), width=13)
+    # signature leaf tucked at the ear base
+    lx, ly = 528, 272
+    d.ellipse([lx - 40, ly - 22, lx + 40, ly + 22], fill=LEAF_A)
+    d.ellipse([lx - 40, ly - 22, lx + 4, ly + 22], fill=LEAF_B)
+    d.line([(lx - 36, ly), (lx + 36, ly)], fill=(70, 100, 58, 255), width=6)
+    # eye patch + glossy eye (profile)
+    _ellipse(L, 690, 462, 66, 86, PATCH, rotation=8)
+    _eye_base(L, 698, 466, 40, 48, (58, 50, 58, 255), EYE_DARK)
+    d.ellipse([698 - 40, 466 - 48, 698 + 40, 466 + 48],
+              outline=(20, 16, 20, 255), width=4)
+    d.ellipse([678, 432, 706, 460], fill=(255, 255, 255, 215))
+    d.ellipse([706, 478, 722, 494], fill=(255, 255, 255, 255))
+    # muzzle, nose, mouth
+    d.ellipse([748 - 54, 548 - 38, 748 + 54, 548 + 38], fill=(242, 237, 230, 255))
+    d.ellipse([764 - 22, 528 - 15, 764 + 22, 528 + 15], fill=NOSE)
+    d.ellipse([750, 520, 770, 534], fill=NOSE_HI[:3] + (170,))
+    d.arc([726, 548, 776, 582], 25, 155, fill=MOUTH_DARK, width=5)
+    # cheek fluff scallops along the jaw
+    for cx in (548, 576, 604):
+        d.ellipse([cx - 20, 566, cx + 20, 606], fill=WHITE_FUR)
+    # blush
+    d.ellipse([600, 540, 660, 584], fill=BLUSH[:3] + (110,))
+    return L
+
+
 # ------------------------------------------------------------------ render ---
 
 def _apply_locomotion(canvas: Image.Image, pose: Pose) -> Image.Image:
@@ -521,10 +633,14 @@ def _apply_locomotion(canvas: Image.Image, pose: Pose) -> Image.Image:
 
 def render_pose(pose: Pose) -> Image.Image:
     """Render one master-resolution (960px) frame for the given pose."""
+    if pose.profile:
+        return _render_profile_pose(pose)
     # body (with optional wave arm replacing the resting right arm)
     body = _render_body(pose.wave, pose.step_phase)
     if pose.wave:
         body.alpha_composite(_wave_arm())
+    if pose.stretch_arms:
+        body.alpha_composite(_raised_arms())
     body.alpha_composite(_body_shading(pose.wave, pose.step_phase))
 
     # head group (head + face rotate together around the neck)
@@ -560,6 +676,26 @@ def render_pose(pose: Pose) -> Image.Image:
     if pose.lean or pose.body_dx or pose.squash:
         canvas = _apply_locomotion(canvas, pose)
     canvas.alpha_composite(_extras_world(pose))
+    return canvas
+
+
+def _render_profile_pose(pose: Pose) -> Image.Image:
+    """Side-view walk frame: body bob moves everything together."""
+    import math
+    body = _render_body_profile(pose)
+    body.alpha_composite(_profile_shading())
+    head = _render_head_profile(pose)
+    # head counter-bob: slight, delayed
+    hdy = int(6 * abs(math.sin(pose.step_phase + 0.7)))
+    canvas = _new()
+    canvas.alpha_composite(body)
+    canvas.alpha_composite(head, (0, hdy))
+    if pose.bob:
+        shifted = _new()
+        shifted.alpha_composite(canvas, (0, int(pose.bob)))
+        canvas = shifted
+    if pose.squash:
+        canvas = _apply_locomotion(canvas, pose)
     return canvas
 
 

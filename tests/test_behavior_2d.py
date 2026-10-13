@@ -5,7 +5,7 @@ import random
 from PySide6.QtCore import QObject, QPoint, Signal
 
 from doodle_mvp.behavior import events as E
-from doodle_mvp.behavior.engine import IDLE, MOVING, REACTING, BehaviorEngine
+from doodle_mvp.behavior.engine import DRAGGING, IDLE, MOVING, REACTING, BehaviorEngine
 from doodle_mvp.desktop.mover import Mover, ease_in_quad
 
 
@@ -25,9 +25,9 @@ class FakeMover(QObject):
         self._active = True
         self.calls.append(("glide", target, duration_ms))
 
-    def wander_to(self, target, duration_ms=1200):
+    def walk_to(self, target, speed_px_s=56.0):
         self._active = True
-        self.calls.append(("wander", target, duration_ms))
+        self.calls.append(("walk", target, speed_px_s))
 
     def fall_to(self, target, duration_ms=650):
         self._active = True
@@ -141,13 +141,19 @@ def test_come_here_walks_beside_cursor(qapp, bus, emitted):
     engine, mover = make_engine(bus, emitted)
     bus.publish(E.COME_HERE, {"x": 1000, "y": 600})
     assert engine.state == MOVING
-    kind, target, duration = mover.calls[-1]
-    assert kind == "wander"  # directed walk reuses the walk machinery
+    # anticipation first: no window movement yet
+    assert ("walk_start", False, 150) in emitted
+    assert mover.calls == []
+    engine.on_animation_finished("walk_start")
+    kind, target, speed = mover.calls[-1]
+    assert kind == "walk"  # directed walk reuses the walk machinery
     assert target == QPoint(820, 600)  # 180px beside the cursor
+    assert speed == 84.0  # fast stride for directed travel
     assert ("facing", "right") in emitted
-    assert ("walk", True, 150) in emitted
-    mover.arrived.emit("wander")
-    engine.on_animation_finished("land")
+    assert ("walk_fast", True, 0) in emitted
+    engine.on_move_arrived("walk")
+    assert ("walk_stop", False, 0) in emitted
+    engine.on_animation_finished("walk_stop")
     assert engine.state == IDLE
     engine.shutdown()
 
@@ -174,7 +180,20 @@ def test_wander_now_triggers_walk(qapp, bus, emitted):
     engine, mover = make_engine(bus, emitted)
     bus.publish(E.WANDER_NOW, {})
     assert engine.state == MOVING
-    assert mover.calls[-1][0] == "wander"
+    assert ("walk_start", False, 150) in emitted  # anticipation first
+    engine.on_animation_finished("walk_start")
+    assert mover.calls[-1][0] == "walk"
+    assert mover.calls[-1][2] == 56.0  # stride-matched wander speed
+    engine.shutdown()
+
+
+def test_walk_cancelled_during_anticipation_never_moves(qapp, bus, emitted):
+    engine, mover = make_engine(bus, emitted)
+    bus.publish(E.WANDER_NOW, {})
+    engine.handle_drag_start()  # grab mid-anticipation
+    engine.on_animation_finished("walk_start")
+    assert mover.calls == []  # pending walk was discarded
+    assert engine.state == DRAGGING
     engine.shutdown()
 
 

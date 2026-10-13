@@ -305,7 +305,36 @@ headless, so they are **NOT VERIFIED** (not claimed).
     unrelated user activity are collected — **PASS** by construction
     (only idle-seconds counter read; code-inspected, no such APIs).
 
+### Living character acceptance
+
+1. Watch idle for 30s — **PASS** (8-frame breathing loop with weight
+   sway; blink/yawn/curious/stretch picked by scheduler; frame strips
+   inspected; on-screen feel **NOT VERIFIED**).
+2. Trigger a wander (menu: "Take a walk") — **PASS** (walk_start
+   anticipation → profile stride loop → walk_stop settle → idle;
+   offscreen run confirmed the sequence completes).
+3. Verify feet don't slide — **PASS** by construction (constant
+   56px/s window speed = 56px stride per 1.0s cycle; offscreen
+   measured ~55px/s; visual confirmation **NOT VERIFIED**).
+4. Walk, stop, change direction — **PASS** (wander picks 1–3 strides
+   with scheduler pauses; direction mirrored for leftward travel).
+5. Cursor approach and poke — **PASS** (dwell gaze + playful reaction;
+   feel **NOT VERIFIED**).
+6. Drag and release — **PASS** (drag pose → glide/fall → land settle
+   → idle; strips inspected).
+7. Interrupt a walk mid-stride with poke/drag — **PASS** (pending
+   stride discarded, mover cancelled, reaction plays).
+
 ### General (visual, needs Windows)
+
+- [ ] Transparency: no rectangle/halo around the artwork.
+- [ ] Always-on-top feel against native apps; tray behaves.
+- [ ] Idle variety over several minutes feels calm, not mechanical.
+- [ ] Drag/glide/land sequence feels physical and responsive.
+- [ ] No flicker, teleporting, or unresponsive window.
+- [ ] Screen edges and multi-monitor: panda stays reachable.
+- [ ] Walk cycle: feet visibly step, no sliding, turns read naturally.
+- [ ] walk_start/walk_stop transitions don't pop or ghost.
 
 - [ ] Transparency: no rectangle/halo around the artwork.
 - [ ] Always-on-top feel against native apps; tray behaves.
@@ -317,8 +346,9 @@ headless, so they are **NOT VERIFIED** (not claimed).
 ## Project status (honest)
 
 - Implemented and automatically tested: app lifecycle, animation system
-  (16 states, 61 frames from one parametric rig), cross-fade transitions
-  (single-timer, interrupt-safe), drag/click input with velocity-tracked
+  (20 states, 88 frames from one parametric rig), cross-fade transitions
+  (single-timer, interrupt-safe), stride-matched walk locomotion with
+  walk_start/walk_stop transitions, drag/click input with velocity-tracked
   release, gravity drop on downward throws, directed come-here walks,
   on-demand wander, cursor dwell facing, behavior priorities
   (drag > reactions > movement > personality > idle), cursor proximity with
@@ -345,6 +375,11 @@ headless, so they are **NOT VERIFIED** (not claimed).
   activity levels (normal/calm/rest/quiet) driving scheduler weights and
   idle cadence, Context & privacy dialog with plain-language explanations,
   quiet-mode menu toggles. **162/162 tests pass** (138 baseline + 24 new).
+- Living character overhaul: profile walk cycle (8 frames, 1.0s stride)
+  with walk_start/walk_stop transitions, stride-matched constant-velocity
+  mover (56px/s wander, 84px/s come-here), interrupt-safe walk state
+  machine, 8-frame breathing idle loop, 5-frame stretch. **165/165 tests
+  pass** (162 baseline + 3 new).
 - Implemented, needs manual visual verification: everything marked
   NOT VERIFIED in the checklist above — transparency, always-on-top feel,
   motion smoothness/feel, tray on Windows. New artwork (walk strip, land

@@ -1,10 +1,11 @@
-"""Mover: smooth, eased window movement for glides and wanders.
+"""Mover: window movement for glides, walks, and falls.
 
 Single short-lived 60fps QTimer, elapsed-time-based (QElapsedTimer) so
 motion doesn't depend on frame-timing jitter. Supports:
 
 - glide_to(target, duration_ms): ease-out cubic, used after drag release.
-- wander_to(target, duration_ms): ease-in-out, used for autonomous strolls.
+- walk_to(target, speed_px_s): constant velocity matched to the walk
+  cycle stride (no easing -> no foot sliding).
 
 Only one movement runs at a time; starting a new one replaces the old.
 cancel() stops immediately. The move callback clamps to the screen, so the
@@ -42,7 +43,7 @@ def ease_in_quad(t: float) -> float:
 
 
 class Mover(QObject):
-    arrived = Signal(str)  # kind: "glide" | "wander" | "fall" | "cancelled"
+    arrived = Signal(str)  # kind: "glide" | "walk" | "fall" | "cancelled"
 
     def __init__(
         self,
@@ -75,8 +76,25 @@ class Mover(QObject):
     def glide_to(self, target: QPoint, duration_ms: int = 350) -> None:
         self._begin("glide", target, duration_ms, ease_out_cubic)
 
-    def wander_to(self, target: QPoint, duration_ms: int = 1200) -> None:
-        self._begin("wander", target, duration_ms, ease_in_out_quad)
+    def walk_to(self, target: QPoint, speed_px_s: float) -> None:
+        """Stride-matched walk: constant velocity, no easing.
+
+        The walk cycle covers a fixed stride per loop; moving at exactly
+        stride/cycle keeps the feet planted instead of sliding.
+        """
+        try:
+            start = self._get_pos()
+        except Exception as exc:
+            log.warning("Could not read position: %s", exc)
+            return
+        dx = target.x() - start.x()
+        dy = target.y() - start.y()
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist < 1.0:
+            self.arrived.emit("walk")
+            return
+        duration_ms = int(dist / max(1.0, speed_px_s) * 1000)
+        self._begin("walk", target, duration_ms, lambda t: t)
 
     def fall_to(self, target: QPoint, duration_ms: int = 650) -> None:
         """Accelerating drop (gravity feel); the move callback clamps to

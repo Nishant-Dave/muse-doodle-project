@@ -44,3 +44,55 @@ principles are reimplemented with Doodle's own panda.
 3. "Take a walk" on-demand wander (menu + tray).
 4. Cursor dwell → face-the-cursor facing (monitor dwell timer, engine flip).
 5. Tests + docs; no new artwork (fall reuses `surprised` loop honestly).
+
+## Living character overhaul (2026-10-13)
+
+### Root causes of the static appearance
+
+1. **No real walk cycle.** The old 6-frame `walk` was a front-view rock with
+   96x60 stub feet lifting 7.5 runtime px — invisible at 240px. The window
+   moved (ease-in-out over a fixed 1200ms) while the character did not
+   visibly step: the classic "sticker dragged across the desktop".
+2. **Motion decoupled from animation.** Wander used ease-in-out with a
+   constant 8fps loop, so foot speed never matched window speed (foot
+   sliding), and every wander looked like an abrupt left-right drag.
+3. **No transitions.** Idle cut straight to the walk loop and back; no
+   anticipation, no settle.
+4. **Idle was a 4-frame bob.** Breathing was a whole-character 3px bounce —
+   no weight sway, no stretch, no micro-life.
+
+### What was built
+
+- **Profile walk cycle (8 frames, 1.0s):** side view facing right (mirrored
+  for left), two swinging legs with alternating 42px foot lifts, body bob
+  at 2x step frequency, counter-bobbing head, opposite arm swing. Same
+  identity markers: eye patch, leaf, crown tuft, blush.
+- **Stride-matched mover (`Mover.walk_to`):** constant velocity, no easing.
+  Wander = 56px/s (8fps loop), come-here = 84px/s (12fps `walk_fast`).
+  Duration derives from distance, so feet stay planted.
+- **Walk state machine:** `walk_start` (anticipation: crouch, lean in,
+  first step; ends on the profile stride frame) -> `walk`/`walk_fast` loop
+  + mover -> `walk_stop` (plant, front settle) -> idle. Interrupt-safe:
+  poke/drag/mood during anticipation discards the pending stride; stale
+  animation-finished events are ignored via explicit expected-finish
+  tracking.
+- **Idle life:** 8-frame breathing loop (squash breath + weight sway) plus
+  a new 5-frame `stretch` (elongate, arms raised, ears perked) in the
+  scheduler weights.
+- Wander distances are now 1-3 strides (56-168px): meaningful but
+  conservative, with natural pauses from the scheduler.
+
+### Verified
+
+- 165/165 pytest pass (offscreen).
+- Frame strips visually inspected: walk, walk_start, walk_stop, idle,
+  stretch, drag, land.
+- Offscreen full-app run: wander state machine completes
+  (walk_start -> walk -> walk_stop -> idle); window moves at ~55px/s
+  constant, matching the 56px stride.
+- `tools/validate_assets.py`: assets OK (88 frames / 20 animations).
+
+### NOT verified (no Windows capture on this machine)
+
+Live Windows rendering, walk-cycle feel at real size, foot-plant
+convincingness in motion, and long-run CPU. See README manual checklist.

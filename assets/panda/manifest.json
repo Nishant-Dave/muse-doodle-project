@@ -2,12 +2,28 @@
   "idle": {
     "fps": 2,
     "loop": true,
-    "description": "Calm breathing idle loop",
+    "description": "Breathing idle loop: squash breath + micro weight sway",
     "frames": [
       "idle/frame_00.png",
       "idle/frame_01.png",
       "idle/frame_02.png",
-      "idle/frame_03.png"
+      "idle/frame_03.png",
+      "idle/frame_04.png",
+      "idle/frame_05.png",
+      "idle/frame_06.png",
+      "idle/frame_07.png"
+    ]
+  },
+  "stretch": {
+    "fps": 6,
+    "loop": false,
+    "description": "Morning stretch: elongate, arms raised, ears perked",
+    "frames": [
+      "stretch/frame_00.png",
+      "stretch/frame_01.png",
+      "stretch/frame_02.png",
+      "stretch/frame_03.png",
+      "stretch/frame_04.png"
     ]
   },
   "blink": {
@@ -129,14 +145,53 @@
   "walk": {
     "fps": 8,
     "loop": true,
-    "description": "Waddle walk cycle: weight shift, alternating steps, bob",
+    "description": "Profile walk cycle: alternating leg swings, foot lifts, body bob (1.0s per stride)",
     "frames": [
       "walk/frame_00.png",
       "walk/frame_01.png",
       "walk/frame_02.png",
       "walk/frame_03.png",
       "walk/frame_04.png",
-      "walk/frame_05.png"
+      "walk/frame_05.png",
+      "walk/frame_06.png",
+      "walk/frame_07.png"
+    ]
+  },
+  "walk_fast": {
+    "fps": 12,
+    "loop": true,
+    "description": "Same stride played faster for directed travel (come-here); window speed matched",
+    "frames": [
+      "walk_fast/frame_00.png",
+      "walk_fast/frame_01.png",
+      "walk_fast/frame_02.png",
+      "walk_fast/frame_03.png",
+      "walk_fast/frame_04.png",
+      "walk_fast/frame_05.png",
+      "walk_fast/frame_06.png",
+      "walk_fast/frame_07.png"
+    ]
+  },
+  "walk_start": {
+    "fps": 12,
+    "loop": false,
+    "description": "Anticipation: crouch, lean into motion, first step",
+    "frames": [
+      "walk_start/frame_00.png",
+      "walk_start/frame_01.png",
+      "walk_start/frame_02.png",
+      "walk_start/frame_03.png"
+    ]
+  },
+  "walk_stop": {
+    "fps": 12,
+    "loop": false,
+    "description": "Plant feet, settle back to front idle",
+    "frames": [
+      "walk_stop/frame_00.png",
+      "walk_stop/frame_01.png",
+      "walk_stop/frame_02.png",
+      "walk_stop/frame_03.png"
     ]
   },
   "gaze_left": {

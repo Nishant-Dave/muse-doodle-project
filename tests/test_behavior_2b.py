@@ -26,9 +26,9 @@ class FakeMover(QObject):
         self._active = True
         self.calls.append(("glide", target, duration_ms))
 
-    def wander_to(self, target, duration_ms=1200):
+    def walk_to(self, target, speed_px_s=56.0):
         self._active = True
-        self.calls.append(("wander", target, duration_ms))
+        self.calls.append(("walk", target, speed_px_s))
 
     def cancel(self):
         self._active = False
@@ -156,9 +156,20 @@ def test_poke_cancels_wander(qapp, bus, emitted):
     engine, mover, _ = make_engine(bus, emitted)
     assert engine._start_wander() is True
     assert engine.state == MOVING
+    engine.on_animation_finished("walk_start")  # stride begins
     engine.handle_poke()
     assert ("cancel",) in mover.calls
     assert emitted[-1] == ("playful", False, 0)
+    assert engine.state == REACTING
+    engine.shutdown()
+
+
+def test_poke_during_walk_anticipation_discards_pending(qapp, bus, emitted):
+    engine, mover, _ = make_engine(bus, emitted)
+    assert engine._start_wander() is True
+    engine.handle_poke()  # before walk_start finishes: no mover to cancel
+    assert mover.calls == []
+    assert engine._walk_pending is None  # discarded: the stride never starts
     assert engine.state == REACTING
     engine.shutdown()
 
@@ -171,13 +182,15 @@ def test_wander_sets_facing_and_returns_to_idle(qapp, bus, emitted):
     engine._on_schedule_timeout()
     assert engine.state == MOVING
     assert ("facing", "right") in emitted
-    assert ("walk", True, 150) in emitted  # walk cross-fades in from idle
-    assert mover.calls[-1][0] == "wander"
-    mover.arrived.emit("wander")
-    # stopping transitions through the landing settle, then idle
-    assert emitted[-1] == ("land", False, 100)
-    assert engine.state == REACTING
-    engine.on_animation_finished("land")
+    assert ("walk_start", False, 150) in emitted  # anticipation first
+    engine.on_animation_finished("walk_start")
+    assert ("walk", True, 0) in emitted  # stride-matched loop, no fade needed
+    assert mover.calls[-1][0] == "walk"
+    engine.on_move_arrived("walk")
+    # stopping transitions through the walk settle, then idle
+    assert emitted[-1] == ("walk_stop", False, 0)
+    engine.on_animation_finished("walk_stop")
+    assert engine.state == IDLE
     assert engine.state == IDLE
     engine.shutdown()
 
@@ -193,6 +206,7 @@ def test_wander_disabled_by_toggle(qapp, bus, emitted):
 def test_cancelled_move_does_not_change_state(qapp, bus, emitted):
     engine, mover, _ = make_engine(bus, emitted)
     assert engine._start_wander() is True
+    engine.on_animation_finished("walk_start")
     engine.handle_drag_start()  # drag preempts the wander
     assert ("cancel",) in mover.calls
     assert engine.state == "dragging"
@@ -222,6 +236,7 @@ def test_shutdown_stops_mover_and_monitor(qapp, bus, emitted):
 def test_mood_during_wander_reacts_and_cancels_move(qapp, bus, emitted):
     engine, mover, _ = make_engine(bus, emitted, rng=random.Random(42))
     assert engine._start_wander() is True
+    engine.on_animation_finished("walk_start")
     bus.publish(E.MOOD_SELECTED, {"mood": "happy"})
     assert ("cancel",) in mover.calls
     assert emitted[-1] == ("happy", False, 0)
