@@ -380,6 +380,13 @@ headless, so they are **NOT VERIFIED** (not claimed).
   mover (56px/s wander, 84px/s come-here), interrupt-safe walk state
   machine, 8-frame breathing idle loop, 5-frame stretch. **165/165 tests
   pass** (162 baseline + 3 new).
+- Phase 5 living personality: coherent multi-stage sequences via
+  expected-finish chaining (`drowsy`: yawn→sleepy; `notice`:
+  curious→random gaze side), new `blink_double` and `gaze_up` animations
+  (22 states, 99 frames), poke/mood now interrupt sequences but never
+  plain one-shots or drags, scheduler weights/cooldowns + calm-profile
+  eligibility for the new picks. **174/174 tests pass** (165 baseline +
+  9 new).
 - Implemented, needs manual visual verification: everything marked
   NOT VERIFIED in the checklist above — transparency, always-on-top feel,
   motion smoothness/feel, tray on Windows. New artwork (walk strip, land

@@ -37,7 +37,9 @@ def test_pick_returns_known_activity():
     sched = PersonalityScheduler(rng=random.Random(0), clock=FakeClock())
     activity = sched.pick()
     assert activity in (
-        "blink", "curious", "yawn", "sleepy", "happy", "playful", "surprised", "wander",
+        "blink", "blink_double", "curious", "yawn", "sleepy", "happy",
+        "playful", "surprised", "wander", "gaze_left", "gaze_right",
+        "gaze_up", "stretch", "drowsy", "notice",
     )
 
 
