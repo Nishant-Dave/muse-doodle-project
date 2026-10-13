@@ -30,7 +30,11 @@ WEIGHTS: dict[str, float] = {
     "wander": 6.0,
     "gaze_left": 5.0,
     "gaze_right": 5.0,
+    "gaze_up": 4.0,
+    "blink_double": 9.0,
     "stretch": 6.0,
+    "drowsy": 5.0,
+    "notice": 8.0,
 }
 
 # Activity -> minimum seconds between selections.
@@ -44,12 +48,18 @@ COOLDOWNS: dict[str, float] = {
     "curious": 20.0,
     "gaze_left": 45.0,
     "gaze_right": 45.0,
+    "gaze_up": 45.0,
     "blink": 0.0,
+    "blink_double": 25.0,
+    "drowsy": 120.0,
+    "notice": 60.0,
+    "stretch": 90.0,
 }
 
 # Focus-mode profile: calm activities only (no playful outbursts, no walks).
 CALM_ACTIVITIES = frozenset(
-    {"blink", "curious", "yawn", "sleepy", "gaze_left", "gaze_right"}
+    {"blink", "blink_double", "curious", "yawn", "sleepy", "gaze_left",
+     "gaze_right", "gaze_up", "drowsy", "notice"}
 )
 # Rest/quiet profile: barely-there presence.
 REST_ACTIVITIES = frozenset({"blink", "sleepy"})

@@ -218,6 +218,29 @@
       "gaze_right/frame_03.png"
     ]
   },
+  "gaze_up": {
+    "fps": 6,
+    "loop": false,
+    "description": "Look up: head lift + raised gaze, ease back",
+    "frames": [
+      "gaze_up/frame_00.png",
+      "gaze_up/frame_01.png",
+      "gaze_up/frame_02.png",
+      "gaze_up/frame_03.png"
+    ]
+  },
+  "blink_double": {
+    "fps": 10,
+    "loop": false,
+    "description": "Natural double blink: open -> closed -> open -> closed -> open",
+    "frames": [
+      "blink_double/frame_00.png",
+      "blink_double/frame_01.png",
+      "blink_double/frame_02.png",
+      "blink_double/frame_03.png",
+      "blink_double/frame_04.png"
+    ]
+  },
   "land": {
     "fps": 8,
     "loop": false,

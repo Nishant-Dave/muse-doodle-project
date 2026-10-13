@@ -245,6 +245,30 @@ ANIMATIONS: dict[str, dict] = {
             Pose(eye="open", mouth="small", gaze_dx=5, head_dx=6),
         ],
     },
+    "gaze_up": {
+        "fps": 6, "loop": False,
+        "description": "Look up: head lift + raised gaze, ease back",
+        "frames": [
+            Pose(eye="open", mouth="small"),
+            Pose(eye="open", mouth="small", gaze_dy=-10, head_dy=-16,
+                 ear_perk=0.5),
+            Pose(eye="open", mouth="small", gaze_dy=-10, head_dy=-16,
+                 ear_perk=0.5),
+            Pose(eye="open", mouth="small", gaze_dy=-4, head_dy=-6),
+        ],
+    },
+    "blink_double": {
+        "fps": 10, "loop": False,
+        "description": "Natural double blink: open -> closed -> open -> "
+                       "closed -> open",
+        "frames": [
+            Pose(eye="open", mouth="small"),
+            Pose(eye="closed", mouth="small"),
+            Pose(eye="open", mouth="small"),
+            Pose(eye="closed", mouth="small"),
+            Pose(eye="open", mouth="small"),
+        ],
+    },
     "land": {
         "fps": 8, "loop": False,
         "description": "Landing settle: crouch -> squash -> rebound -> rest",

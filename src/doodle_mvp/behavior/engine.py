@@ -87,6 +87,15 @@ WALK_SPEED_PX_S = 56.0           # wander: 8fps walk loop
 WALK_FAST_SPEED_PX_S = 84.0      # come-here: 12fps walk_fast loop
 WANDER_MIN_DIST_PX = 56.0        # one stride
 WANDER_MAX_DIST_PX = 168.0       # three strides: meaningful, conservative
+# -- Phase 5: coherent multi-stage behaviors --------------------------------------
+# Each sequence is an ordered list of one-shot animations played back-to-back
+# (via expected-finish chaining), then idle. "notice" picks its gaze side
+# at play time in _sequence_steps.
+SEQUENCES: dict[str, list[str]] = {
+    "drowsy": ["yawn", "sleepy"],   # resting -> yawn -> sleepy settle
+    "notice": ["curious", "gaze"],  # resting -> notices -> observes ("gaze"
+                                   # is replaced with a real side at play)
+}
 
 # Cross-fade durations (ms) per transition. Short on purpose: long fades feel
 # sluggish, and incompatible poses (e.g. happy bounce) must cut, not ghost.
@@ -128,6 +137,8 @@ class BehaviorEngine(QObject):
         self._focus_phase = FocusPhase.NONE
         self._walk_pending: tuple | None = None  # (target, speed, anim)
         self._expected_finish: tuple = (None, None)  # (anim_name, callback)
+        self._seq_queue: list[str] = []  # remaining stages of a sequence
+        self._seq_name: str | None = None
         self._state = IDLE
         self._enabled = True
         self._momentum_enabled = True
@@ -187,10 +198,19 @@ class BehaviorEngine(QObject):
 
     # -- event handlers (public for deterministic tests) -----------------------
 
+    def _reaction_interruptible(self) -> bool:
+        """A poke/mood may preempt a multi-stage sequence, but never a drag
+        and never a plain one-shot reaction (no stacked animations)."""
+        if self._state == DRAGGING:
+            return False
+        if self._state == REACTING and not self._seq_queue:
+            return False
+        return True
+
     def handle_poke(self) -> None:
         if not self._enabled:
             return
-        if self._state == DRAGGING or self._state == REACTING:
+        if not self._reaction_interruptible():
             log.debug("Poke ignored while %s", self._state)
             return
         self._cancel_movement()
@@ -339,7 +359,7 @@ class BehaviorEngine(QObject):
 
     def _user_reaction(self, animation: str) -> None:
         """User-triggered one-shot: never during drag, never stacked."""
-        if self._state == DRAGGING or self._state == REACTING:
+        if not self._reaction_interruptible():
             return
         self._cancel_movement()
         self._react(animation)
@@ -433,6 +453,9 @@ class BehaviorEngine(QObject):
             if not self._start_wander():
                 self._schedule_next()
             return
+        if activity in SEQUENCES:
+            self._react_sequence(activity)
+            return
         self._react(activity)
 
     # -- internals ------------------------------------------------------------------
@@ -443,7 +466,46 @@ class BehaviorEngine(QObject):
         self._schedule_timer.stop()
         self._scheduler.record(animation)
         self._expected_finish = (None, None)
+        self._seq_queue = []
         self._play(animation, False, fade_ms)
+
+    def _react_sequence(self, name: str) -> None:
+        """Play a coherent multi-stage behavior back-to-back, then idle.
+
+        Built on the existing expected-finish chaining: each stage's
+        completion advances the queue. No new timers; interruptions clear
+        the queue via _cancel_movement/_react.
+        """
+        steps = self._sequence_steps(name)
+        if not steps:
+            self._to_idle()
+            return
+        self._state = REACTING
+        self._schedule_timer.stop()
+        self._scheduler.record(name)
+        self._seq_queue = list(steps[1:])
+        self._seq_name = name
+        self._expected_finish = (steps[0], self._advance_sequence)
+        self._play(steps[0], False)
+
+    def _sequence_steps(self, name: str) -> list[str]:
+        steps = SEQUENCES.get(name)
+        if steps is None:
+            return []
+        if name == "notice":
+            # Observe a random direction after the curious beat.
+            side = self._rng.choice(["gaze_left", "gaze_right", "gaze_up"])
+            return ["curious", side]
+        return list(steps)
+
+    def _advance_sequence(self) -> None:
+        if not self._seq_queue or self._state != REACTING:
+            self._seq_queue = []
+            self._to_idle()
+            return
+        nxt = self._seq_queue.pop(0)
+        self._expected_finish = (nxt, self._advance_sequence)
+        self._play(nxt, False)
 
     def _play(self, name: str, loop: bool, fade_ms: int = 0) -> None:
         # Never restart the same animation back-to-back.
@@ -458,6 +520,7 @@ class BehaviorEngine(QObject):
 
     def _to_idle(self) -> None:
         self._state = IDLE
+        self._seq_queue = []
         if self._enabled:
             self._play("idle", True)
             self._schedule_next()
@@ -474,6 +537,7 @@ class BehaviorEngine(QObject):
     def _cancel_movement(self) -> None:
         self._walk_pending = None
         self._expected_finish = (None, None)
+        self._seq_queue = []
         if self._mover is not None and self._mover.is_active:
             self._mover.cancel()
 
