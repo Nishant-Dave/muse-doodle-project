@@ -15,6 +15,7 @@ Requires Pillow (tool-time only, not an app runtime dependency).
 from __future__ import annotations
 
 import json
+import math
 import shutil
 from pathlib import Path
 
@@ -30,15 +31,42 @@ ARCHIVE = ASSETS / "archive" / "panda_v1"
 
 NEUTRAL = Pose(eye="open", mouth="small", blush=110)
 
+# -- Living character: genuine profile walk cycle (facing right; the
+#    engine mirrors it for leftward travel). 8 frames @ 8fps = 1.0s
+#    per stride cycle; the mover matches window speed to this cadence.
+_WALK_POSES = [
+    Pose(profile=True, eye="open", mouth="small",
+         step_phase=i * 2 * math.pi / 8,
+         bob=int(-10 * abs(math.sin(i * 2 * math.pi / 8))))
+    for i in range(8)
+]
+
+# Idle: 8-frame breathing loop (4s) with micro weight sway.
+_IDLE_SQUASH = [0, 0.03, 0.06, 0.04, 0, -0.02, -0.04, -0.02]
+_IDLE_DX = [0, 2, 4, 2, 0, -2, -4, -2]
+
 ANIMATIONS: dict[str, dict] = {
     "idle": {
         "fps": 2, "loop": True,
-        "description": "Calm breathing idle loop",
+        "description": "Breathing idle loop: squash breath + micro weight sway",
         "frames": [
-            Pose(eye="open", mouth="small", bob=0),
-            Pose(eye="open", mouth="small", bob=3),
-            Pose(eye="open", mouth="smile", bob=0),
-            Pose(eye="open", mouth="small", bob=2),
+            Pose(eye="open", mouth="small", squash=s, body_dx=d)
+            for s, d in zip(_IDLE_SQUASH, _IDLE_DX)
+        ],
+    },
+    "stretch": {
+        "fps": 6, "loop": False,
+        "description": "Morning stretch: elongate, arms raised, ears perked",
+        "frames": [
+            Pose(eye="open", mouth="small", squash=-0.08, head_dy=-8,
+                 stretch_arms=True, ear_perk=0.6),
+            Pose(eye="happy", mouth="open_smile", squash=-0.16, head_dy=-16,
+                 stretch_arms=True, ear_perk=1.0),
+            Pose(eye="happy", mouth="open_smile", squash=-0.20, head_dy=-20,
+                 stretch_arms=True, ear_perk=1.0),
+            Pose(eye="open", mouth="small", squash=-0.10, head_dy=-10,
+                 stretch_arms=True, ear_perk=0.5),
+            Pose(eye="open", mouth="small"),
         ],
     },
     "blink": {
@@ -156,22 +184,39 @@ ANIMATIONS: dict[str, dict] = {
             Pose(eye="wide", mouth="o", bob=5, ear_perk=0.8),
         ],
     },
-    # -- Phase 2C: locomotion, gaze, landing ---
+    # -- Living character: locomotion (profile view, facing right) ---
     "walk": {
         "fps": 8, "loop": True,
-        "description": "Waddle walk cycle: weight shift, alternating steps, bob",
+        "description": "Profile walk cycle: alternating leg swings, foot "
+                       "lifts, body bob (1.0s per stride)",
+        "frames": _WALK_POSES,
+    },
+    "walk_fast": {
+        "fps": 12, "loop": True,
+        "description": "Same stride played faster for directed travel "
+                       "(come-here); window speed matched",
+        "frames": _WALK_POSES,
+    },
+    "walk_start": {
+        "fps": 12, "loop": False,
+        "description": "Anticipation: crouch, lean into motion, first step",
         "frames": [
-            Pose(eye="open", mouth="small", lean=0, body_dx=0, bob=0, step_phase=0),
-            Pose(eye="open", mouth="small", lean=-8, body_dx=-14, bob=-6,
-                 step_phase=1.0, head_tilt=4, head_dx=8),
-            Pose(eye="open", mouth="small", lean=-3, body_dx=-6, bob=-10,
-                 step_phase=0.2, head_tilt=2),
-            Pose(eye="open", mouth="small", lean=8, body_dx=14, bob=-6,
-                 step_phase=-1.0, head_tilt=-4, head_dx=-8),
-            Pose(eye="open", mouth="small", lean=3, body_dx=6, bob=-10,
-                 step_phase=-0.2, head_tilt=-2),
-            Pose(eye="open", mouth="small", lean=0, body_dx=0, bob=-4,
-                 step_phase=0),
+            Pose(eye="open", mouth="small"),
+            Pose(eye="open", mouth="small", squash=0.30, lean=5, body_dx=8),
+            Pose(eye="open", mouth="small", squash=0.12, lean=9, body_dx=16,
+                 step_phase=0.6),
+            _WALK_POSES[0],
+        ],
+    },
+    "walk_stop": {
+        "fps": 12, "loop": False,
+        "description": "Plant feet, settle back to front idle",
+        "frames": [
+            Pose(profile=True, eye="open", mouth="small",
+                 step_phase=math.pi / 2, bob=0),
+            Pose(eye="open", mouth="small", squash=0.28),
+            Pose(eye="open", mouth="small", squash=0.12),
+            Pose(eye="open", mouth="small"),
         ],
     },
     "gaze_left": {

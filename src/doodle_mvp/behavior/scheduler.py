@@ -30,6 +30,7 @@ WEIGHTS: dict[str, float] = {
     "wander": 6.0,
     "gaze_left": 5.0,
     "gaze_right": 5.0,
+    "stretch": 6.0,
 }
 
 # Activity -> minimum seconds between selections.

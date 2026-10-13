@@ -79,8 +79,14 @@ FALL_X_DRIFT_MAX_PX = 80.0
 FALL_DURATION_MS = 650
 COME_HERE_OFFSET_PX = 180        # panda stops beside the cursor, not under it
 COME_HERE_MIN_DIST_PX = 80.0     # closer than this: just look, don't walk
-WANDER_MIN_DIST_PX = 60.0
-WANDER_MAX_DIST_PX = 180.0
+# -- Living character: stride-matched locomotion ----------------------------------
+# The walk cycle covers WALK_STRIDE_PX per 1.0s loop (8 frames @ 8fps);
+# the mover travels at exactly this speed so feet stay planted.
+WALK_STRIDE_PX = 56.0
+WALK_SPEED_PX_S = 56.0           # wander: 8fps walk loop
+WALK_FAST_SPEED_PX_S = 84.0      # come-here: 12fps walk_fast loop
+WANDER_MIN_DIST_PX = 56.0        # one stride
+WANDER_MAX_DIST_PX = 168.0       # three strides: meaningful, conservative
 
 # Cross-fade durations (ms) per transition. Short on purpose: long fades feel
 # sluggish, and incompatible poses (e.g. happy bounce) must cut, not ghost.
@@ -120,6 +126,8 @@ class BehaviorEngine(QObject):
         self._policy = policy or PersonalityPolicy()
         self._level = ActivityLevel.NORMAL
         self._focus_phase = FocusPhase.NONE
+        self._walk_pending: tuple | None = None  # (target, speed, anim)
+        self._expected_finish: tuple = (None, None)  # (anim_name, callback)
         self._state = IDLE
         self._enabled = True
         self._momentum_enabled = True
@@ -268,7 +276,8 @@ class BehaviorEngine(QObject):
             self._react(f"gaze_{side}")
             return
         self._cancel_movement()
-        self._begin_walk(target, duration_ms=1400, record_name="come_here")
+        self._begin_walk(target, speed_px_s=WALK_FAST_SPEED_PX_S,
+                         walk_anim="walk_fast", record_name="come_here")
 
     def handle_wander_now(self, payload: dict) -> None:
         if not self._enabled or self._state != IDLE:
@@ -383,17 +392,32 @@ class BehaviorEngine(QObject):
 
     def on_animation_finished(self, name: str) -> None:
         """Called when the player's one-shot animation completes."""
+        expected, action = self._expected_finish
+        if expected is not None and name == expected:
+            self._expected_finish = (None, None)
+            action()
+            return
+        if expected is not None and name != expected:
+            # Stale finish for an interrupted one-shot: ignore.
+            log.debug("Ignoring stale finish: %s (expected %s)", name, expected)
+            return
         if self._state == REACTING:
             self._to_idle()
         log.debug("Animation finished: %s (state=%s)", name, self._state)
 
     def on_move_arrived(self, kind: str) -> None:
-        """Called by the Mover when a glide/wander completes or is cancelled."""
+        """Called by the Mover when a glide/walk/fall completes or is cancelled."""
         if kind == "cancelled":
             return  # something else took over; it owns the state now
-        if self._state == MOVING:
-            # Settle with the landing sequence before returning to idle.
-            self._react("land", fade_ms=FADE_TO_LAND)
+        if self._state != MOVING:
+            return
+        if kind == "walk":
+            # Settle with the stop transition, then idle.
+            self._expected_finish = ("walk_stop", self._to_idle)
+            self._play("walk_stop", False)
+            return
+        # Settle with the landing sequence before returning to idle.
+        self._react("land", fade_ms=FADE_TO_LAND)
 
     # -- personality schedule ----------------------------------------------------
 
@@ -418,6 +442,7 @@ class BehaviorEngine(QObject):
         self._state = REACTING
         self._schedule_timer.stop()
         self._scheduler.record(animation)
+        self._expected_finish = (None, None)
         self._play(animation, False, fade_ms)
 
     def _play(self, name: str, loop: bool, fade_ms: int = 0) -> None:
@@ -447,6 +472,8 @@ class BehaviorEngine(QObject):
         self._schedule_timer.start(delay_ms)
 
     def _cancel_movement(self) -> None:
+        self._walk_pending = None
+        self._expected_finish = (None, None)
         if self._mover is not None and self._mover.is_active:
             self._mover.cancel()
 
@@ -482,20 +509,37 @@ class BehaviorEngine(QObject):
         else:
             return False
         target = QPoint(int(pos.x() + dx), int(pos.y() + dy))
-        self._begin_walk(target, duration_ms=1200, record_name="wander")
+        self._begin_walk(target, speed_px_s=WALK_SPEED_PX_S,
+                         walk_anim="walk", record_name="wander")
         return True
 
-    def _begin_walk(self, target: QPoint, duration_ms: int, record_name: str) -> None:
-        """Shared walk startup for wander and come-here."""
+    def _begin_walk(self, target: QPoint, speed_px_s: float, walk_anim: str,
+                    record_name: str) -> None:
+        """Stride-matched walk: anticipation -> walk loop -> settle.
+
+        The walk_start one-shot plays first (0.33s); when it finishes, the
+        walk loop starts together with the constant-velocity mover. On
+        arrival the walk_stop settle plays, then idle.
+        """
         pos = self._get_pos()
         dx = target.x() - pos.x()
         self._state = MOVING
         self._schedule_timer.stop()
         self._scheduler.record(record_name)
         self._set_facing("left" if dx < 0 else "right")
-        # Genuine walk cycle, cross-faded in from idle.
-        self._play("walk", True, fade_ms=FADE_IDLE_TO_WALK)
-        self._mover.wander_to(target, duration_ms=duration_ms)
+        self._walk_pending = (target, speed_px_s, walk_anim)
+        self._expected_finish = ("walk_start", self._begin_walk_stride)
+        self._play("walk_start", False, fade_ms=FADE_IDLE_TO_WALK)
+
+    def _begin_walk_stride(self) -> None:
+        """Anticipation done: start the stride-matched walk loop + mover."""
+        if self._state != MOVING or not self._walk_pending:
+            return
+        target, speed_px_s, walk_anim = self._walk_pending
+        self._walk_pending = None
+        self._play(walk_anim, True)
+        if self._mover is not None:
+            self._mover.walk_to(target, speed_px_s)
 
     def _start_fall(self, vx: float, vy: float) -> None:
         """Accelerating gravity drop after a downward throw."""

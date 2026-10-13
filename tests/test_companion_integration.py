@@ -27,7 +27,7 @@ class FakeMover(QObject):
     def glide_to(self, target, duration_ms=350):
         self._active = True
 
-    def wander_to(self, target, duration_ms=1200):
+    def walk_to(self, target, speed_px_s=56.0):
         self._active = True
 
     def fall_to(self, target, duration_ms=650):

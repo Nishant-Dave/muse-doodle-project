@@ -59,14 +59,29 @@ def test_glide_decelerates():
     assert steps[0] > steps[-1]  # ease-out: early steps larger
 
 
-def test_wander_uses_gentle_easing_and_completes(qapp, emitted):
-    mover, seen, _ = make_mover()
+def test_walk_moves_at_constant_velocity(qapp, emitted):
+    seen = []
+    pos = {"at": QPoint(100, 100)}
+    mover = Mover(get_pos=lambda: pos["at"], move_to=seen.append)
+    mover._clock = FakeElapsed([0, 250, 500, 750, 1000, 1000])
     mover.arrived.connect(emitted.append)
-    mover.wander_to(QPoint(200, 200), duration_ms=400)
+    mover.walk_to(QPoint(300, 100), speed_px_s=200.0)  # 200px -> 1000ms
     for _ in range(6):
         mover._tick()
-    assert emitted == ["wander"]
-    assert seen[-1] == QPoint(200, 200)
+    assert emitted == ["walk"]
+    assert seen[-1] == QPoint(300, 100)
+    steps = [seen[i + 1].x() - seen[i].x() for i in range(len(seen) - 1)]
+    nonzero = [s for s in steps if s > 0]
+    # constant velocity: all steps (nearly) equal — no easing
+    assert max(nonzero) - min(nonzero) <= 2
+
+
+def test_walk_zero_distance_arrives_immediately(qapp, emitted):
+    mover, seen, _ = make_mover()
+    mover.arrived.connect(emitted.append)
+    mover.walk_to(QPoint(100, 100), speed_px_s=56.0)  # already there
+    assert emitted == ["walk"]
+    assert not mover.is_active
 
 
 def test_cancel_stops_and_reports(qapp, emitted):
@@ -83,11 +98,11 @@ def test_new_movement_replaces_old(qapp, emitted):
     mover, _, _ = make_mover()
     mover.arrived.connect(emitted.append)
     mover.glide_to(QPoint(900, 900), duration_ms=400)
-    mover.wander_to(QPoint(120, 120), duration_ms=400)
-    assert mover.kind == "wander"
+    mover.walk_to(QPoint(120, 120), speed_px_s=100.0)
+    assert mover.kind == "walk"
     for _ in range(6):
         mover._tick()
-    assert emitted == ["wander"]  # no stray glide arrival
+    assert emitted == ["walk"]  # no stray glide arrival
 
 
 def test_shutdown_stops_timer(qapp):
