@@ -175,23 +175,25 @@
   "walk_start": {
     "fps": 12,
     "loop": false,
-    "description": "Anticipation: crouch, lean into motion, first step",
+    "description": "Turn transition: anticipation, head-turn toward travel, three-quarter, first profile stride",
     "frames": [
       "walk_start/frame_00.png",
       "walk_start/frame_01.png",
       "walk_start/frame_02.png",
-      "walk_start/frame_03.png"
+      "walk_start/frame_03.png",
+      "walk_start/frame_04.png"
     ]
   },
   "walk_stop": {
     "fps": 12,
     "loop": false,
-    "description": "Plant feet, settle back to front idle",
+    "description": "Plant, turn head back from profile, settle to idle",
     "frames": [
       "walk_stop/frame_00.png",
       "walk_stop/frame_01.png",
       "walk_stop/frame_02.png",
-      "walk_stop/frame_03.png"
+      "walk_stop/frame_03.png",
+      "walk_stop/frame_04.png"
     ]
   },
   "gaze_left": {

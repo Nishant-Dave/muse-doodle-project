@@ -680,7 +680,13 @@ def render_pose(pose: Pose) -> Image.Image:
 
 
 def _render_profile_pose(pose: Pose) -> Image.Image:
-    """Side-view walk frame: body bob moves everything together."""
+    """Side-view walk frame: body bob moves everything together.
+
+    The profile art is drawn smaller than the front view; it is scaled
+    x1.28 about the ground line so the walk cycle matches the front
+    idle's visual mass, ground contact, and horizontal center. Without
+    this the character visibly shrinks every time a walk starts.
+    """
     import math
     body = _render_body_profile(pose)
     body.alpha_composite(_profile_shading())
@@ -696,7 +702,13 @@ def _render_profile_pose(pose: Pose) -> Image.Image:
         canvas = shifted
     if pose.squash:
         canvas = _apply_locomotion(canvas, pose)
-    return canvas
+    # normalize scale/placement to the front view (measured audit):
+    # x1.28 then offset so ground stays at y=956 and center x at 476.
+    S = 1.28
+    big = canvas.resize((int(960 * S), int(960 * S)), Image.BICUBIC)
+    out = _new()
+    out.alpha_composite(big, (-197, -266))
+    return out
 
 
 def render_runtime(pose: Pose) -> Image.Image:
