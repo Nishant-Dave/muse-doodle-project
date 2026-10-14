@@ -83,6 +83,8 @@ class Pose:
     # -- Phase 6: physical interaction ---
     arm_out: float = 0.0         # extra outward arm rotation (flailing)
     leg_dangle: int = 0          # feet hang lower (being held / falling)
+    # -- Visual Fix 01: real breathing ---
+    breathe: float = 0.0         # torso half-width delta, master px (+: inhale)
 
 
 # ------------------------------------------------------------------ helpers ---
@@ -196,8 +198,9 @@ def _draw_fur(base: Image.Image):
 
 def _render_body(pose: Pose) -> Image.Image:
     L = _new()
-    # torso
-    _ellipse(L, 480, 730, 235, 215, WHITE_FUR)
+    # torso (breathe widens the chest only; head and feet are separate/fixed)
+    rx = 235 + pose.breathe
+    _ellipse(L, 480, 730, rx, 215, WHITE_FUR)
     # black shoulder saddles (classic panda marking, soft)
     _ellipse(L, 330, 620, 120, 150, BLACK_FUR, rotation=-18)
     _ellipse(L, 630, 620, 120, 150, BLACK_FUR, rotation=18)
@@ -236,13 +239,15 @@ def _body_shading(pose: Pose) -> Image.Image:
         da.ellipse([540, 560, 660, 700], fill=(30, 22, 30, 70))   # arm/torso R
     da.ellipse([380, 880, 580, 960], fill=(30, 22, 30, 60))   # feet shadow
     ao = _soft(ao, 28)
-    # mask to body silhouette (feet follow the step phase + dangle)
+    # mask to body silhouette (feet follow the step phase + dangle;
+    # torso follows the breathing expansion)
     lift = 30.0
     ldy = -max(0.0, pose.step_phase) * lift + pose.leg_dangle
     rdy = -max(0.0, -pose.step_phase) * lift + pose.leg_dangle
+    rx = 235 + pose.breathe
     mask = _new()
     dm = ImageDraw.Draw(mask)
-    dm.ellipse([480 - 235, 730 - 215, 480 + 235, 730 + 215], fill=(255, 255, 255, 255))
+    dm.ellipse([480 - rx, 730 - 215, 480 + rx, 730 + 215], fill=(255, 255, 255, 255))
     dm.ellipse([262 - 72, 710 - 138, 262 + 72, 710 + 138], fill=(255, 255, 255, 255))
     if not pose.wave:
         dm.ellipse([698 - 72, 710 - 138, 698 + 72, 710 + 138], fill=(255, 255, 255, 255))

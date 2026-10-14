@@ -2,7 +2,7 @@
   "idle": {
     "fps": 2,
     "loop": true,
-    "description": "Breathing idle loop: squash breath + micro weight sway",
+    "description": "Breathing idle loop: chest expansion only; head, face and feet stay fixed",
     "frames": [
       "idle/frame_00.png",
       "idle/frame_01.png",
