@@ -77,6 +77,30 @@ FALL_MIN_DOWNWARD_PX_S = 700.0   # release faster than this, mostly downward -> 
 FALL_X_DRIFT_FACTOR = 0.15
 FALL_X_DRIFT_MAX_PX = 80.0
 FALL_DURATION_MS = 650
+# -- Phase 6: explicit physical interaction states --------------------------------
+# The engine's core states (IDLE/DRAGGING/MOVING/REACTING) stay; _physical names
+# the current physical phase for clarity and testing. Every state can be
+# interrupted by grabbing (direct manipulation overrides everything).
+PHYS_RESTING = "resting"
+PHYS_GRABBING = "grabbing"
+PHYS_DRAGGING = "dragging"
+PHYS_GLIDING = "gliding"
+PHYS_FALLING = "falling"
+PHYS_LANDING = "landing"
+PHYS_TURNING = "turning"
+PHYS_WALKING = "walking"
+PHYS_RECOVERING = "recovering"
+PHYSICAL_TRANSITIONS: dict[str, set[str]] = {
+    PHYS_RESTING: {PHYS_GRABBING, PHYS_TURNING},
+    PHYS_GRABBING: {PHYS_DRAGGING, PHYS_RESTING},
+    PHYS_DRAGGING: {PHYS_GLIDING, PHYS_FALLING, PHYS_RESTING},
+    PHYS_GLIDING: {PHYS_LANDING, PHYS_GRABBING},
+    PHYS_FALLING: {PHYS_LANDING, PHYS_GRABBING},
+    PHYS_LANDING: {PHYS_RESTING, PHYS_GRABBING},
+    PHYS_TURNING: {PHYS_WALKING, PHYS_GRABBING, PHYS_RESTING},
+    PHYS_WALKING: {PHYS_RECOVERING, PHYS_GRABBING},
+    PHYS_RECOVERING: {PHYS_RESTING, PHYS_GRABBING},
+}
 COME_HERE_OFFSET_PX = 180        # panda stops beside the cursor, not under it
 COME_HERE_MIN_DIST_PX = 80.0     # closer than this: just look, don't walk
 # -- Living character: stride-matched locomotion ----------------------------------
@@ -139,6 +163,7 @@ class BehaviorEngine(QObject):
         self._expected_finish: tuple = (None, None)  # (anim_name, callback)
         self._seq_queue: list[str] = []  # remaining stages of a sequence
         self._seq_name: str | None = None
+        self._physical = PHYS_RESTING
         self._state = IDLE
         self._enabled = True
         self._momentum_enabled = True
@@ -222,11 +247,28 @@ class BehaviorEngine(QObject):
         self._cancel_movement()
         self._state = DRAGGING
         self._schedule_timer.stop()
+        self._set_physical(PHYS_GRABBING)
+        # Brief pickup startle, then settle into the hold loop.
+        self._expected_finish = ("grabbed", self._begin_drag_hold)
+        self._play("grabbed", False)
+
+    def _begin_drag_hold(self) -> None:
+        if self._state != DRAGGING:
+            return
+        self._set_physical(PHYS_DRAGGING)
         self._play("drag", True)
+
+    def _set_physical(self, physical: str) -> None:
+        self._physical = physical
+
+    @property
+    def physical_state(self) -> str:
+        return self._physical
 
     def handle_drag_end(self, payload: dict) -> None:
         if self._state != DRAGGING:
             return
+        self._expected_finish = (None, None)  # grabbed may not have finished
         distance = float(payload.get("distance_px", 0.0))
         duration = float(payload.get("duration_s", 0.0))
         if distance >= DIZZY_DISTANCE_PX or duration >= DIZZY_DURATION_S:
@@ -433,10 +475,12 @@ class BehaviorEngine(QObject):
             return
         if kind == "walk":
             # Settle with the stop transition, then idle.
+            self._set_physical(PHYS_RECOVERING)
             self._expected_finish = ("walk_stop", self._to_idle)
             self._play("walk_stop", False)
             return
         # Settle with the landing sequence before returning to idle.
+        self._set_physical(PHYS_LANDING)
         self._react("land", fade_ms=FADE_TO_LAND)
 
     # -- personality schedule ----------------------------------------------------
@@ -521,6 +565,7 @@ class BehaviorEngine(QObject):
     def _to_idle(self) -> None:
         self._state = IDLE
         self._seq_queue = []
+        self._physical = PHYS_RESTING
         if self._enabled:
             self._play("idle", True)
             self._schedule_next()
@@ -554,6 +599,7 @@ class BehaviorEngine(QObject):
         self._schedule_timer.stop()
         self._set_facing("left" if nx < 0 else "right")
         # Settle pose for the glide, cross-faded from the drag pose.
+        self._set_physical(PHYS_GLIDING)
         self._play("idle", True, fade_ms=FADE_DRAG_TO_GLIDE)
         self._mover.glide_to(target, duration_ms=350)
 
@@ -592,6 +638,7 @@ class BehaviorEngine(QObject):
         self._scheduler.record(record_name)
         self._set_facing("left" if dx < 0 else "right")
         self._walk_pending = (target, speed_px_s, walk_anim)
+        self._set_physical(PHYS_TURNING)
         self._expected_finish = ("walk_start", self._begin_walk_stride)
         self._play("walk_start", False, fade_ms=FADE_IDLE_TO_WALK)
 
@@ -601,6 +648,7 @@ class BehaviorEngine(QObject):
             return
         target, speed_px_s, walk_anim = self._walk_pending
         self._walk_pending = None
+        self._set_physical(PHYS_WALKING)
         self._play(walk_anim, True)
         if self._mover is not None:
             self._mover.walk_to(target, speed_px_s)
@@ -613,7 +661,8 @@ class BehaviorEngine(QObject):
         target = QPoint(int(pos.x() + drift), int(pos.y() + 4000))
         self._state = MOVING
         self._schedule_timer.stop()
-        self._play("surprised", True)  # wide-eyed fall; loops for the drop
+        self._set_physical(PHYS_FALLING)
+        self._play("fall", True)  # dangling flail; loops for the drop
         self._mover.fall_to(target, duration_ms=FALL_DURATION_MS)
 
     def _weighted_pick(self, variants: list[tuple[str, float]]) -> str:

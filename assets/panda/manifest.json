@@ -142,6 +142,27 @@
       "drag/frame_01.png"
     ]
   },
+  "grabbed": {
+    "fps": 12,
+    "loop": false,
+    "description": "Pickup startle: wide eyes, then dangle into the hold",
+    "frames": [
+      "grabbed/frame_00.png",
+      "grabbed/frame_01.png",
+      "grabbed/frame_02.png"
+    ]
+  },
+  "fall": {
+    "fps": 10,
+    "loop": true,
+    "description": "Falling: dangling limbs, flailing sway, wide eyes",
+    "frames": [
+      "fall/frame_00.png",
+      "fall/frame_01.png",
+      "fall/frame_02.png",
+      "fall/frame_03.png"
+    ]
+  },
   "walk": {
     "fps": 8,
     "loop": true,

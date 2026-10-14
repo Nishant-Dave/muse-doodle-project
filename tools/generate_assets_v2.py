@@ -184,6 +184,30 @@ ANIMATIONS: dict[str, dict] = {
             Pose(eye="wide", mouth="o", bob=5, ear_perk=0.8),
         ],
     },
+    "grabbed": {
+        "fps": 12, "loop": False,
+        "description": "Pickup startle: wide eyes, then dangle into the hold",
+        "frames": [
+            Pose(eye="wide", mouth="o", brow="raised", squash=0.12,
+                 ear_perk=1.0),
+            Pose(eye="wide", mouth="o", bob=-6, leg_dangle=18, ear_perk=0.8),
+            Pose(eye="wide", mouth="o", bob=-5, leg_dangle=12, ear_perk=0.8),
+        ],
+    },
+    "fall": {
+        "fps": 10, "loop": True,
+        "description": "Falling: dangling limbs, flailing sway, wide eyes",
+        "frames": [
+            Pose(eye="wide", mouth="o", brow="raised", arm_out=38,
+                 leg_dangle=20, bob=-30, body_dx=-8, lean=-3, ear_perk=1.0),
+            Pose(eye="wide", mouth="o", brow="raised", arm_out=30,
+                 leg_dangle=18, bob=-30, body_dx=0, ear_perk=1.0),
+            Pose(eye="wide", mouth="o", brow="raised", arm_out=38,
+                 leg_dangle=20, bob=-30, body_dx=8, lean=3, ear_perk=1.0),
+            Pose(eye="wide", mouth="o", brow="raised", arm_out=30,
+                 leg_dangle=18, bob=-30, body_dx=0, ear_perk=1.0),
+        ],
+    },
     # -- Living character: locomotion (profile view, facing right) ---
     "walk": {
         "fps": 8, "loop": True,
