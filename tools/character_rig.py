@@ -80,6 +80,9 @@ class Pose:
     # -- Living character: profile walk view ---
     profile: bool = False        # side view (walk cycle); step_phase = radians
     stretch_arms: bool = False   # both arms raised (stretching)
+    # -- Phase 6: physical interaction ---
+    arm_out: float = 0.0         # extra outward arm rotation (flailing)
+    leg_dangle: int = 0          # feet hang lower (being held / falling)
 
 
 # ------------------------------------------------------------------ helpers ---
@@ -191,7 +194,7 @@ def _draw_fur(base: Image.Image):
 
 # ------------------------------------------------------------------- body ---
 
-def _render_body(wave: bool = False, step_phase: float = 0.0) -> Image.Image:
+def _render_body(pose: Pose) -> Image.Image:
     L = _new()
     # torso
     _ellipse(L, 480, 730, 235, 215, WHITE_FUR)
@@ -199,15 +202,15 @@ def _render_body(wave: bool = False, step_phase: float = 0.0) -> Image.Image:
     _ellipse(L, 330, 620, 120, 150, BLACK_FUR, rotation=-18)
     _ellipse(L, 630, 620, 120, 150, BLACK_FUR, rotation=18)
     # arms (right arm is replaced by the raised wave arm when waving)
-    _ellipse(L, 262, 710, 72, 138, BLACK_FUR, rotation=-14)
-    _ellipse(L, 245, 680, 26, 60, BLACK_HI[:3] + (90,), rotation=-14)
-    if not wave:
-        _ellipse(L, 698, 710, 72, 138, BLACK_FUR, rotation=14)
-        _ellipse(L, 715, 680, 26, 60, BLACK_HI[:3] + (90,), rotation=14)
+    _ellipse(L, 262, 710, 72, 138, BLACK_FUR, rotation=-(14 + pose.arm_out))
+    _ellipse(L, 245, 680, 26, 60, BLACK_HI[:3] + (90,), rotation=-(14 + pose.arm_out))
+    if not pose.wave:
+        _ellipse(L, 698, 710, 72, 138, BLACK_FUR, rotation=14 + pose.arm_out)
+        _ellipse(L, 715, 680, 26, 60, BLACK_HI[:3] + (90,), rotation=14 + pose.arm_out)
     # feet: alternate lift for the walk cycle (+phase = left foot raised)
     lift = 30.0
-    ldy = -max(0.0, step_phase) * lift
-    rdy = -max(0.0, -step_phase) * lift
+    ldy = -max(0.0, pose.step_phase) * lift + pose.leg_dangle
+    rdy = -max(0.0, -pose.step_phase) * lift + pose.leg_dangle
     _ellipse(L, 372, 908 + ldy, 96, 60, BLACK_FUR)
     _ellipse(L, 588, 908 + rdy, 96, 60, BLACK_FUR)
     _ellipse(L, 350, 892 + ldy, 40, 22, BLACK_HI[:3] + (110,))
@@ -216,7 +219,7 @@ def _render_body(wave: bool = False, step_phase: float = 0.0) -> Image.Image:
     return L
 
 
-def _body_shading(wave: bool = False, step_phase: float = 0.0) -> Image.Image:
+def _body_shading(pose: Pose) -> Image.Image:
     """Lighting overlays for the body, masked to the body silhouette."""
     shade = _new()
     d = ImageDraw.Draw(shade)
@@ -229,19 +232,19 @@ def _body_shading(wave: bool = False, step_phase: float = 0.0) -> Image.Image:
     ao = _new()
     da = ImageDraw.Draw(ao)
     da.ellipse([300, 560, 420, 700], fill=(30, 22, 30, 70))   # arm/torso L
-    if not wave:
+    if not pose.wave:
         da.ellipse([540, 560, 660, 700], fill=(30, 22, 30, 70))   # arm/torso R
     da.ellipse([380, 880, 580, 960], fill=(30, 22, 30, 60))   # feet shadow
     ao = _soft(ao, 28)
-    # mask to body silhouette (feet follow the step phase)
+    # mask to body silhouette (feet follow the step phase + dangle)
     lift = 30.0
-    ldy = -max(0.0, step_phase) * lift
-    rdy = -max(0.0, -step_phase) * lift
+    ldy = -max(0.0, pose.step_phase) * lift + pose.leg_dangle
+    rdy = -max(0.0, -pose.step_phase) * lift + pose.leg_dangle
     mask = _new()
     dm = ImageDraw.Draw(mask)
     dm.ellipse([480 - 235, 730 - 215, 480 + 235, 730 + 215], fill=(255, 255, 255, 255))
     dm.ellipse([262 - 72, 710 - 138, 262 + 72, 710 + 138], fill=(255, 255, 255, 255))
-    if not wave:
+    if not pose.wave:
         dm.ellipse([698 - 72, 710 - 138, 698 + 72, 710 + 138], fill=(255, 255, 255, 255))
     dm.ellipse([372 - 96, 908 + ldy - 60, 372 + 96, 908 + ldy + 60], fill=(255, 255, 255, 255))
     dm.ellipse([588 - 96, 908 + rdy - 60, 588 + 96, 908 + rdy + 60], fill=(255, 255, 255, 255))
@@ -636,12 +639,12 @@ def render_pose(pose: Pose) -> Image.Image:
     if pose.profile:
         return _render_profile_pose(pose)
     # body (with optional wave arm replacing the resting right arm)
-    body = _render_body(pose.wave, pose.step_phase)
+    body = _render_body(pose)
     if pose.wave:
         body.alpha_composite(_wave_arm())
     if pose.stretch_arms:
         body.alpha_composite(_raised_arms())
-    body.alpha_composite(_body_shading(pose.wave, pose.step_phase))
+    body.alpha_composite(_body_shading(pose))
 
     # head group (head + face rotate together around the neck)
     head = _render_head(pose)

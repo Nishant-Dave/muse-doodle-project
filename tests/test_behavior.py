@@ -42,10 +42,10 @@ def test_drag_preempts_and_short_drag_returns_to_idle(engine, emitted):
     _start(engine, emitted)
     engine.handle_poke()  # reacting...
     engine.handle_drag_start()  # drag wins
-    assert emitted[-1] == ("drag", True, 0)
+    assert emitted[-1] == ("grabbed", False, 0)
     assert engine.state == DRAGGING
     engine.handle_poke()  # ignored while dragging
-    assert emitted[-1] == ("drag", True, 0)
+    assert emitted[-1] == ("grabbed", False, 0)
     engine.handle_drag_end({"distance_px": 10.0, "duration_s": 0.4})
     assert emitted[-1] == ("idle", True, 0)
     assert engine.state == IDLE
@@ -87,7 +87,7 @@ def test_mood_ignored_while_dragging(engine, emitted):
     _start(engine, emitted)
     engine.handle_drag_start()
     engine.handle_mood({"mood": "happy"})
-    assert emitted[-1] == ("drag", True, 0)
+    assert emitted[-1] == ("grabbed", False, 0)
     assert engine.state == DRAGGING
 
 
@@ -112,7 +112,7 @@ def test_scheduled_activity_ignored_when_busy(engine, emitted):
     _start(engine, emitted)
     engine.handle_drag_start()
     engine._on_schedule_timeout()
-    assert emitted[-1] == ("drag", True, 0)
+    assert emitted[-1] == ("grabbed", False, 0)
 
 
 def test_disabling_animations_shows_static_and_ignores_input(engine, emitted):
@@ -133,7 +133,7 @@ def test_events_flow_through_bus(engine, emitted, bus):
     bus.publish(E.POKE)
     assert emitted[-1] == ("playful", False, 0)
     bus.publish(E.DRAG_START)
-    assert emitted[-1] == ("drag", True, 0)
+    assert emitted[-1] == ("grabbed", False, 0)
     bus.publish(E.DRAG_END, {"distance_px": 1.0, "duration_s": 0.1})
     assert emitted[-1] == ("idle", True, 0)
     bus.publish(E.MOOD_SELECTED, {"mood": "sad"})

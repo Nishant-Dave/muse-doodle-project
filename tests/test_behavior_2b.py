@@ -99,7 +99,7 @@ def test_cursor_near_ignored_while_dragging(qapp, bus, emitted):
     engine, _, _ = make_engine(bus, emitted)
     engine.handle_drag_start()
     bus.publish(E.CURSOR_NEAR, {"distance_px": 50.0, "side": "left"})
-    assert emitted[-1] == ("drag", True, 0)
+    assert emitted[-1] == ("grabbed", False, 0)
     engine.shutdown()
 
 

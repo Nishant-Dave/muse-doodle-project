@@ -387,6 +387,13 @@ headless, so they are **NOT VERIFIED** (not claimed).
   plain one-shots or drags, scheduler weights/cooldowns + calm-profile
   eligibility for the new picks. **174/174 tests pass** (165 baseline +
   9 new).
+- Phase 6 physical interactions: explicit physical state machine
+  (resting/grabbing/dragging/gliding/falling/landing/turning/walking/
+  recovering with a valid-transition table), pickup `grabbed` reaction
+  before the drag hold, real `fall` artwork (dangling flail loop) replacing
+  the static surprised pose on downward throws, bounded velocity-based
+  glide/fall, screen-clamped movement. **187/187 tests pass** (174
+  baseline + 13 new). 24 states, 106 frames.
 - Implemented, needs manual visual verification: everything marked
   NOT VERIFIED in the checklist above — transparency, always-on-top feel,
   motion smoothness/feel, tray on Windows. New artwork (walk strip, land

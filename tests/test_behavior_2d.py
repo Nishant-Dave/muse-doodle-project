@@ -66,7 +66,7 @@ def test_downward_throw_falls_with_gravity(qapp, bus, emitted):
     assert target.y() > 500  # headed for the bottom of the screen
     assert abs(target.x() - 500) <= 80  # slight horizontal drift only
     assert duration == 650
-    assert ("surprised", True, 0) in emitted  # wide-eyed fall, looping
+    assert ("fall", True, 0) in emitted  # wide-eyed fall, looping
     mover.arrived.emit("fall")
     assert emitted[-1] == ("land", False, 100)  # settle on landing
     engine.on_animation_finished("land")
@@ -172,7 +172,7 @@ def test_come_here_ignored_while_dragging(qapp, bus, emitted):
     engine.handle_drag_start()
     bus.publish(E.COME_HERE, {"x": 1000, "y": 600})
     assert mover.calls == []
-    assert emitted[-1] == ("drag", True, 0)
+    assert emitted[-1] == ("grabbed", False, 0)
     engine.shutdown()
 
 
