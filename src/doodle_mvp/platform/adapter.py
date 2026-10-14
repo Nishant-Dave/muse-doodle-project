@@ -52,10 +52,16 @@ class WindowsPlatformAdapter(PlatformAdapter):
 
     def __init__(self) -> None:
         self._user32 = None
+        self._kernel32 = None
+        self._idle_warned = False
         try:
             import ctypes
 
             self._user32 = ctypes.windll.user32
+            # GetTickCount/GetTickCount64 live in kernel32, not user32.
+            self._kernel32 = ctypes.windll.kernel32
+            self._kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+            self._kernel32.GetTickCount.restype = ctypes.c_uint
         except Exception:  # pragma: no cover - non-Windows or locked down
             log.warning("ctypes user32 unavailable; using Qt-only window behavior")
 
@@ -67,7 +73,7 @@ class WindowsPlatformAdapter(PlatformAdapter):
 
     def system_idle_seconds(self) -> float | None:
         """Seconds since last input via GetLastInputInfo; None if unavailable."""
-        if self._user32 is None:
+        if self._user32 is None or self._kernel32 is None:
             return None
         try:
             import ctypes
@@ -81,12 +87,18 @@ class WindowsPlatformAdapter(PlatformAdapter):
                 return None
             # GetTickCount64 avoids the 49-day wrap of GetTickCount.
             try:
-                now_ms = self._user32.GetTickCount64()
+                now_ms = self._kernel32.GetTickCount64()
+                delta_ms = now_ms - info.dwTime
             except AttributeError:
-                now_ms = self._user32.GetTickCount()
-            return max(0.0, (now_ms - info.dwTime) / 1000.0)
+                # 32-bit tick: mask the subtraction so the 49-day wrap
+                # yields a small positive delta instead of a huge one.
+                now_ms = self._kernel32.GetTickCount()
+                delta_ms = (now_ms - info.dwTime) & 0xFFFFFFFF
+            return max(0.0, delta_ms / 1000.0)
         except Exception as exc:  # never let idle detection crash the app
-            log.warning("GetLastInputInfo failed: %s", exc)
+            if not self._idle_warned:
+                self._idle_warned = True
+                log.warning("GetLastInputInfo failed: %s", exc)
             return None
 
 
