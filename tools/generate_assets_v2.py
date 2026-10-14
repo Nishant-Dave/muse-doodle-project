@@ -42,16 +42,21 @@ _WALK_POSES = [
 ]
 
 # Idle: 8-frame breathing loop (4s) with micro weight sway.
+# Visual Fix 01: real breathing — chest expansion only (master px of torso
+# half-width). Inhale, brief hold, exhale, rest. Head, face and feet are
+# untouched by these frames.
+_IDLE_BREATHE = [0, 4, 8, 10, 8, 4, 0, 0]
 _IDLE_SQUASH = [0, 0.03, 0.06, 0.04, 0, -0.02, -0.04, -0.02]
 _IDLE_DX = [0, 2, 4, 2, 0, -2, -4, -2]
 
 ANIMATIONS: dict[str, dict] = {
     "idle": {
         "fps": 2, "loop": True,
-        "description": "Breathing idle loop: squash breath + micro weight sway",
+        "description": "Breathing idle loop: chest expansion only; "
+                       "head, face and feet stay fixed",
         "frames": [
-            Pose(eye="open", mouth="small", squash=s, body_dx=d)
-            for s, d in zip(_IDLE_SQUASH, _IDLE_DX)
+            Pose(eye="open", mouth="small", breathe=b)
+            for b in _IDLE_BREATHE
         ],
     },
     "stretch": {
