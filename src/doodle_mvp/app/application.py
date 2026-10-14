@@ -116,6 +116,7 @@ class DoodleApplication:
             self.settings.animations_enabled(),
             momentum_enabled=self.settings.momentum_enabled(),
             wander_enabled=self.settings.wander_enabled(),
+            personality=self.settings.personality_profile(),
         )
         self.tray.set_quiet_mode(self.settings.context_quiet_mode())
 
@@ -168,6 +169,10 @@ class DoodleApplication:
         self.tray.wander_toggled.connect(
             lambda enabled: self.bus.publish(E.WANDER_TOGGLED, {"enabled": enabled})
         )
+        self.tray.personality_changed.connect(
+            lambda profile: self.bus.publish(
+                E.PERSONALITY_CHANGED, {"profile": profile})
+        )
         self.tray.come_here_requested.connect(self._on_tray_come_here)
         self.tray.wander_now_requested.connect(
             lambda: self.bus.publish(E.WANDER_NOW, {})
@@ -178,6 +183,7 @@ class DoodleApplication:
         self.bus.subscribe(E.ANIMATIONS_TOGGLED, self._apply_animations_toggled)
         self.bus.subscribe(E.MOMENTUM_TOGGLED, self._apply_momentum_toggled)
         self.bus.subscribe(E.WANDER_TOGGLED, self._apply_wander_toggled)
+        self.bus.subscribe(E.PERSONALITY_CHANGED, self._apply_personality_changed)
 
         self.popup.mood_chosen.connect(self._on_mood_chosen)
 
@@ -192,6 +198,10 @@ class DoodleApplication:
 
         self.engine.start()
         self.context_store.republish()  # late subscriber: apply initial policy
+        # Apply the stored personality profile through the event path.
+        self.bus.publish(
+            E.PERSONALITY_CHANGED,
+            {"profile": self.settings.personality_profile()})
         if not self.settings.animations_enabled():
             # Go through the real event path so startup == toggle behavior.
             self.bus.publish(E.ANIMATIONS_TOGGLED, {"enabled": False})
@@ -269,6 +279,15 @@ class DoodleApplication:
         self.settings.set_wander_enabled(enabled)
         self.window.set_wander_enabled(enabled)
         self.tray.set_wander_enabled(enabled)
+
+    def _apply_personality_changed(self, payload: dict) -> None:
+        profile = str(payload.get("profile", ""))
+        try:
+            self.settings.set_personality_profile(profile)
+        except ValueError:
+            return
+        self.window.set_personality(profile)
+        self.tray.set_personality(profile)
 
     def _on_tray_come_here(self) -> None:
         from PySide6.QtGui import QCursor
