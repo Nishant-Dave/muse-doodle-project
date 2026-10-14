@@ -77,6 +77,10 @@ FALL_MIN_DOWNWARD_PX_S = 700.0   # release faster than this, mostly downward -> 
 FALL_X_DRIFT_FACTOR = 0.15
 FALL_X_DRIFT_MAX_PX = 80.0
 FALL_DURATION_MS = 650
+# -- Phase 7: personality ---------------------------------------------------------
+# At most one modest focus-complete celebration per half hour: encouraging,
+# never nagging.
+FOCUS_CHEER_COOLDOWN_S = 1800.0
 # -- Phase 6: explicit physical interaction states --------------------------------
 # The engine's core states (IDLE/DRAGGING/MOVING/REACTING) stay; _physical names
 # the current physical phase for clarity and testing. Every state can be
@@ -205,6 +209,8 @@ class BehaviorEngine(QObject):
         bus.subscribe(E.ANIMATIONS_TOGGLED, self.handle_animations_toggled)
         bus.subscribe(E.MOMENTUM_TOGGLED, self.handle_momentum_toggled)
         bus.subscribe(E.WANDER_TOGGLED, self.handle_wander_toggled)
+        bus.subscribe(E.PERSONALITY_CHANGED, self.handle_personality_changed)
+        bus.subscribe(E.FOCUS_COMPLETED, self.handle_focus_completed)
         bus.subscribe(E.APP_EXITING, lambda _p: self.shutdown())
         if self._mover is not None:
             self._mover.arrived.connect(self.on_move_arrived)
@@ -238,12 +244,14 @@ class BehaviorEngine(QObject):
         if not self._reaction_interruptible():
             log.debug("Poke ignored while %s", self._state)
             return
+        self._scheduler.note_interaction()
         self._cancel_movement()
         self._react("playful")
 
     def handle_drag_start(self) -> None:
         if not self._enabled:
             return
+        self._scheduler.note_interaction()
         self._cancel_movement()
         self._state = DRAGGING
         self._schedule_timer.stop()
@@ -335,9 +343,11 @@ class BehaviorEngine(QObject):
         if dist < COME_HERE_MIN_DIST_PX:
             # Already here: just look at the cursor.
             side = "left" if cx < pos.x() else "right"
+            self._scheduler.note_interaction()
             self._react(f"gaze_{side}")
             return
         self._cancel_movement()
+        self._scheduler.note_interaction()
         self._begin_walk(target, speed_px_s=WALK_FAST_SPEED_PX_S,
                          walk_anim="walk_fast", record_name="come_here")
 
@@ -345,6 +355,7 @@ class BehaviorEngine(QObject):
         if not self._enabled or self._state != IDLE:
             return
         if self._wander_enabled:
+            self._scheduler.note_interaction()
             self._start_wander()
 
     # -- Phase 4: context-driven personality ---------------------------------------
@@ -424,9 +435,37 @@ class BehaviorEngine(QObject):
         if self._state == DRAGGING:
             log.debug("Mood ignored during drag")
             return
+        self._scheduler.note_interaction()
         self._cancel_movement()
         animation = self._weighted_pick(variants)
         self._react(animation)
+
+    # -- Phase 7: personality ------------------------------------------------------
+
+    def handle_personality_changed(self, payload: dict) -> None:
+        profile = str(payload.get("profile", ""))
+        try:
+            self._scheduler.set_profile(profile)
+        except ValueError:
+            log.warning("Ignoring unknown personality profile %r", profile)
+
+    def handle_focus_completed(self, payload: dict) -> None:
+        """A modest celebration when a focus session ends: one happy, idle.
+
+        Never interrupts anything, never in quiet mode, and at most once
+        per FOCUS_CHEER_COOLDOWN_S (the scheduler's happy cooldown tracks it).
+        """
+        if not self._enabled:
+            return
+        if str(payload.get("kind", "")) != "focus":
+            return
+        if self._state != IDLE:
+            return
+        if self._level == ActivityLevel.QUIET:
+            return
+        if not self._scheduler.cooled_down("happy", FOCUS_CHEER_COOLDOWN_S):
+            return
+        self._react("happy")
 
     def handle_animations_toggled(self, payload: dict) -> None:
         self.set_animations_enabled(bool(payload.get("enabled", True)))

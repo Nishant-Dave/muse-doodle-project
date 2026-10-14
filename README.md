@@ -394,6 +394,12 @@ headless, so they are **NOT VERIFIED** (not claimed).
   the static surprised pose on downward throws, bounded velocity-based
   glide/fall, screen-clamped movement. **187/187 tests pass** (174
   baseline + 13 new). 24 states, 106 frames.
+- Phase 7 adaptive personality: named profiles (calm default, playful,
+  curious, sleepy) adjusting scheduler weights/cooldowns/idle chance,
+  persisted via settings and switchable from the tray/context Personality
+  menu; 45s post-interaction wander quiet period; modest one-time happy
+  when a focus session ends (never interrupts, never in quiet mode, 30-min
+  cooldown). **204/204 tests pass** (192 baseline + 12 new).
 - Implemented, needs manual visual verification: everything marked
   NOT VERIFIED in the checklist above — transparency, always-on-top feel,
   motion smoothness/feel, tray on Windows. New artwork (walk strip, land

@@ -19,10 +19,11 @@ import time
 from collections import deque
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QMouseEvent
+from PySide6.QtGui import QAction, QActionGroup, QMouseEvent
 from PySide6.QtWidgets import QMenu, QWidget
 
 from ..behavior import events as E
+from ..behavior.scheduler import PERSONALITY_PROFILES
 from ..character.character import PandaCharacter
 from ..persistence.settings import AppSettings
 from ..platform.adapter import PlatformAdapter
@@ -73,6 +74,7 @@ class CompanionWindow(QWidget):
         self._animations_enabled = settings.animations_enabled()
         self._momentum_enabled = settings.momentum_enabled()
         self._wander_enabled = settings.wander_enabled()
+        self._personality = settings.personality_profile()
         self._quiet_mode = settings.context_quiet_mode()
         self._focus_state_provider = None  # () -> (state, kind); set by app
 
@@ -93,6 +95,9 @@ class CompanionWindow(QWidget):
 
     def set_wander_enabled(self, enabled: bool) -> None:
         self._wander_enabled = enabled
+
+    def set_personality(self, profile: str) -> None:
+        self._personality = profile
 
     def set_quiet_mode(self, enabled: bool) -> None:
         self._quiet_mode = enabled
@@ -221,6 +226,22 @@ class CompanionWindow(QWidget):
             lambda checked: self._bus.publish(E.WANDER_TOGGLED, {"enabled": checked})
         )
         menu.addAction(wander_action)
+
+        personality_menu = QMenu("Personality", menu)
+        personality_menu.setToolTip("How active and expressive Doodle is")
+        group = QActionGroup(personality_menu)
+        group.setExclusive(True)
+        for profile in PERSONALITY_PROFILES:
+            action = QAction(profile.capitalize(), personality_menu)
+            action.setCheckable(True)
+            action.setChecked(profile == self._personality)
+            action.setData(profile)
+            group.addAction(action)
+            personality_menu.addAction(action)
+        group.triggered.connect(
+            lambda action: self._bus.publish(
+                E.PERSONALITY_CHANGED, {"profile": action.data()}))
+        menu.addMenu(personality_menu)
 
         menu.addSeparator()
         come_action = QAction("Come here", menu)

@@ -32,6 +32,8 @@ CONTEXT_QUIET_KEY = "context/quiet_mode"
 CONTEXT_IDLE_SHORT_KEY = "context/idle_short_s"
 CONTEXT_IDLE_LONG_KEY = "context/idle_long_s"
 CONTEXT_SAMPLE_KEY = "context/sample_s"
+# -- Phase 7: personality profile -----------------------------------------------
+PERSONALITY_KEY = "personality/profile"
 
 
 class AppSettings:
@@ -92,6 +94,25 @@ class AppSettings:
 
     def set_wander_enabled(self, enabled: bool) -> None:
         self._s.setValue(WANDER_KEY, bool(enabled))
+
+    # -- personality profile ----------------------------------------------------
+
+    def personality_profile(self) -> str:
+        from doodle_mvp.behavior.scheduler import DEFAULT_PROFILE, PERSONALITY_PROFILES
+
+        raw = str(self._s.value(PERSONALITY_KEY, DEFAULT_PROFILE)).strip().lower()
+        if raw not in PERSONALITY_PROFILES:
+            log.warning("Ignoring invalid personality profile %r; using %r",
+                        raw, DEFAULT_PROFILE)
+            return DEFAULT_PROFILE
+        return raw
+
+    def set_personality_profile(self, profile: str) -> None:
+        from doodle_mvp.behavior.scheduler import PERSONALITY_PROFILES
+
+        if profile not in PERSONALITY_PROFILES:
+            raise ValueError(f"Unknown personality profile: {profile!r}")
+        self._s.setValue(PERSONALITY_KEY, profile)
 
     def proximity_radius(self) -> float:
         raw = self._s.value(PROXIMITY_RADIUS_KEY, 150.0)

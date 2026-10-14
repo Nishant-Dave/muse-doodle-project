@@ -73,6 +73,54 @@ LEVEL_QUIET = "quiet"
 HISTORY_LEN = 3
 IDLE_CHANCE = 0.18  # probability of "do nothing" on a given pick
 
+# -- Phase 7: personality profiles ----------------------------------------------
+# Behavior profiles, not characters: each adjusts selection weights,
+# cooldowns, and the do-nothing chance of the same activity set.
+# "calm" is the default: restful and unobtrusive.
+PERSONALITY_PROFILES: dict[str, dict] = {
+    "calm": {
+        "weight_mult": {
+            "playful": 0.4, "surprised": 0.5, "wander": 0.5, "happy": 0.7,
+            "blink": 1.2, "sleepy": 1.3, "drowsy": 1.2,
+        },
+        "cooldown_mult": {"playful": 1.5, "wander": 1.5},
+        "idle_chance": 0.22,
+    },
+    "playful": {
+        "weight_mult": {
+            "playful": 2.2, "happy": 1.8, "surprised": 1.6, "wander": 1.5,
+            "stretch": 1.5, "notice": 1.3, "curious": 1.3,
+        },
+        "cooldown_mult": {"playful": 0.6, "happy": 0.7, "wander": 0.7},
+        "idle_chance": 0.10,
+    },
+    "curious": {
+        "weight_mult": {
+            "curious": 2.0, "notice": 2.0, "gaze_left": 1.8,
+            "gaze_right": 1.8, "gaze_up": 1.8, "wander": 1.2,
+        },
+        "cooldown_mult": {
+            "curious": 0.6, "notice": 0.6, "gaze_left": 0.6,
+            "gaze_right": 0.6, "gaze_up": 0.6,
+        },
+        "idle_chance": 0.12,
+    },
+    "sleepy": {
+        "weight_mult": {
+            "sleepy": 2.2, "drowsy": 2.0, "yawn": 1.8, "blink": 1.2,
+            "playful": 0.3, "surprised": 0.3, "wander": 0.3, "happy": 0.5,
+            "stretch": 0.5,
+        },
+        "cooldown_mult": {"wander": 2.0, "playful": 2.0},
+        "idle_chance": 0.30,
+    },
+}
+DEFAULT_PROFILE = "calm"
+
+# No autonomous wandering this soon after a direct interaction (poke, drag,
+# mood, commanded walk): movement should feel chosen, not mechanical.
+POST_INTERACTION_QUIET_S = 45.0
+
 
 class PersonalityScheduler:
     def __init__(
@@ -84,11 +132,48 @@ class PersonalityScheduler:
     ) -> None:
         self._rng = rng or random.Random()
         self._clock = clock
-        self._weights = dict(weights) if weights else dict(WEIGHTS)
-        self._cooldowns = dict(cooldowns) if cooldowns else dict(COOLDOWNS)
+        self._base_weights = dict(weights) if weights else dict(WEIGHTS)
+        self._base_cooldowns = dict(cooldowns) if cooldowns else dict(COOLDOWNS)
+        self._weights = dict(self._base_weights)
+        self._cooldowns = dict(self._base_cooldowns)
+        self._idle_chance = IDLE_CHANCE
+        self._profile = DEFAULT_PROFILE
         self._history: list[str] = []
         self._last_run: dict[str, float] = {}
+        self._last_interaction = float("-inf")
         self._level = LEVEL_NORMAL
+
+    @property
+    def profile(self) -> str:
+        return self._profile
+
+    def set_profile(self, profile: str) -> None:
+        """Apply a personality profile's weight/cooldown adjustments."""
+        spec = PERSONALITY_PROFILES.get(profile)
+        if spec is None:
+            raise ValueError(f"Unknown personality profile: {profile!r}")
+        self._profile = profile
+        weight_mult = spec.get("weight_mult", {})
+        cooldown_mult = spec.get("cooldown_mult", {})
+        self._weights = {
+            name: base * weight_mult.get(name, 1.0)
+            for name, base in self._base_weights.items()
+        }
+        self._cooldowns = {
+            name: base * cooldown_mult.get(name, 1.0)
+            for name, base in self._base_cooldowns.items()
+        }
+        self._idle_chance = float(spec.get("idle_chance", IDLE_CHANCE))
+
+    def note_interaction(self) -> None:
+        """Record a direct user interaction (poke, drag, mood, command)."""
+        self._last_interaction = self._clock()
+
+    def cooled_down(self, activity: str, seconds: float,
+                    now: float | None = None) -> bool:
+        """True if `activity` last ran at least `seconds` ago."""
+        now = self._clock() if now is None else now
+        return now - self._last_run.get(activity, float("-inf")) >= seconds
 
     @property
     def history(self) -> list[str]:
@@ -131,6 +216,11 @@ class PersonalityScheduler:
                 continue
             if name in recent:
                 continue
+            if (
+                name == "wander"
+                and now - self._last_interaction < POST_INTERACTION_QUIET_S
+            ):
+                continue  # let the interaction land before roaming again
             last = self._last_run.get(name, float("-inf"))
             if now - last < self._cooldowns.get(name, 0.0):
                 continue
@@ -140,7 +230,7 @@ class PersonalityScheduler:
     def pick(self, now: float | None = None) -> str | None:
         """Pick the next autonomous activity, or None for calm inactivity."""
         now = self._clock() if now is None else now
-        if self._rng.random() < IDLE_CHANCE:
+        if self._rng.random() < self._idle_chance:
             return None
         candidates = self.eligible(now)
         if not candidates:
